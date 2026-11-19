@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/telegram/webhook.ts": {
+      "maxDuration": 60
+    },
+    "api/telegram/cleanup.ts": {
+      "maxDuration": 15
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/telegram/cleanup",
+      "schedule": "0 * * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/api/health"
+    }
+  ]
+}
