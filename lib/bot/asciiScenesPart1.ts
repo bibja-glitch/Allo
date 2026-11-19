@@ -2,7 +2,7 @@ import {
   buildFinalFatalityFrame,
   renderDirectionalFrame,
   type DirectionalFrameSpec,
-} from './asciiUtils';
+} from './asciiUtils.js';
 
 export type AsciiSceneType =
   | 'duel'
@@ -1526,7 +1526,7 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
               '  / \\                      / \\  ',
               '========================[====]==',
             ],
-            labels: [{ row: 1, text: 'PULL LEVER!', align: 'winner' }],
+            labels: [{ row: 1, text: 'PULL LEVER!', align: 'center' }],
           },
           {
             art: [

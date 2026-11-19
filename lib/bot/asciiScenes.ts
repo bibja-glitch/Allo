@@ -1,10 +1,10 @@
-import { joinFrame, stampCenteredText } from './asciiUtils';
+import { joinFrame, stampCenteredText } from './asciiUtils.js';
 import {
   ASCII_SCENES_PART_1,
   type AsciiSceneDefinition,
   type AsciiSceneType,
-} from './asciiScenesPart1';
-import { ASCII_SCENES_PART_2 } from './asciiScenesPart2';
+} from './asciiScenesPart1.js';
+import { ASCII_SCENES_PART_2 } from './asciiScenesPart2.js';
 
 export type { AsciiSceneDefinition, AsciiSceneType };
 
@@ -131,10 +131,8 @@ export function pickRandomAsciiScene(
   const lastSceneId = recentSceneIds[0] || null;
   const recentSet = new Set(recentSceneIds);
 
-  // First try scenes that haven't been played recently
   let pool = ASCII_SCENES.filter((s) => !recentSet.has(s.id));
 
-  // If all scenes were played recently, at minimum never repeat the immediately previous one
   if (pool.length === 0) {
     pool = ASCII_SCENES.filter((s) => s.id !== lastSceneId);
   }

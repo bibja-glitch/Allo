@@ -1,5 +1,5 @@
-import { handleSetupWebhook } from '../../lib/bot/httpHandlers';
-import { sendResult, type VercelRequest, type VercelResponse } from '../../lib/server/vercelTypes';
+import { handleSetupWebhook } from '../../lib/bot/httpHandlers.js';
+import { sendResult, type VercelRequest, type VercelResponse } from '../../lib/server/vercelTypes.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST' && req.method !== 'GET') {
