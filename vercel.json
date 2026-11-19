@@ -1,11 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/health.ts": {
+      "includeFiles": "lib/**"
+    },
     "api/telegram/webhook.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "lib/**"
+    },
+    "api/telegram/setup.ts": {
+      "includeFiles": "lib/**"
     },
     "api/telegram/cleanup.ts": {
-      "maxDuration": 15
+      "maxDuration": 15,
+      "includeFiles": "lib/**"
     }
   },
   "crons": [
