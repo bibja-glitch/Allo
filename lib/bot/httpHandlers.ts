@@ -1,7 +1,8 @@
-import { getAsciiSceneInventory } from './asciiScenes';
-import { cleanupExpiredAnimations, processTelegramUpdate, type TelegramUpdate } from './botEngine';
-import { isUpstashConfigured } from './redis';
-import { isBotTokenConfigured, tgGetMe, tgSetMyCommands, tgSetWebhook } from './telegramApi';
+import { getAsciiSceneInventory } from './asciiScenes.js';
+import { cleanupExpiredAnimations, processTelegramUpdate, type TelegramUpdate } from './botEngine.js';
+import { isUpstashConfigured } from './redis.js';
+import { renderStatusHtml, runDiagnostics } from './diagnostics.js';
+import { isBotTokenConfigured, tgGetMe, tgSetMyCommands, tgSetWebhook } from './telegramApi.js';
 
 export interface HttpHandlerResult {
   status: number;
@@ -17,11 +18,19 @@ function readHeader(
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
+export async function handleStatusPage(): Promise<{ status: number; html: string }> {
+  const report = await runDiagnostics();
+  return { status: 200, html: renderStatusHtml(report) };
+}
+
 export async function handleBotHealth(): Promise<HttpHandlerResult> {
+  const report = await runDiagnostics();
   return {
     status: 200,
     body: {
-      ok: true,
+      ok: report.ok,
+      checks: report.checks,
+      expectedWebhookUrl: report.expectedWebhookUrl,
       service: 'АЛЛО, РОУД! — ASCII CHAOS Telegram Bot',
       database: isUpstashConfigured() ? 'upstash_redis' : 'local_fallback',
       telegramConfigured: isBotTokenConfigured(),
@@ -49,11 +58,14 @@ export async function handleTelegramBotWebhook(
     return { status: 400, body: { ok: false, error: 'Invalid Telegram Update payload' } };
   }
 
-  const result = await processTelegramUpdate(update);
-  return {
-    status: 200,
-    body: result,
-  };
+  try {
+    const result = await processTelegramUpdate(update);
+    return { status: 200, body: result };
+  } catch (err) {
+    console.error('Telegram webhook processing failed:', err);
+    // 500 => Telegram повторит доставку; метка дедупликации уже снята в processTelegramUpdate
+    return { status: 500, body: { ok: false, error: 'Internal error while processing update' } };
+  }
 }
 
 export async function handleSetupWebhook(
@@ -128,9 +140,11 @@ export async function handleCleanupExpiredAnimations(
     }
   }
 
-  const result = await cleanupExpiredAnimations();
-  return {
-    status: 200,
-    body: { ok: true, ...result },
-  };
+  try {
+    const result = await cleanupExpiredAnimations();
+    return { status: 200, body: { ok: true, ...result } };
+  } catch (err) {
+    console.error('Cleanup failed:', err);
+    return { status: 500, body: { ok: false, error: 'Cleanup failed' } };
+  }
 }

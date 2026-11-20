@@ -2,16 +2,16 @@ import {
   computePlayerProgress,
   validateEventCreation,
   validateEventTransition,
-} from '../../src/game/rules';
-import type { CallEvent, PlayerProgress } from '../../src/types/game';
+} from '../../src/game/rules.js';
+import type { CallEvent, PlayerProgress } from '../../src/types/game.js';
 import {
   ASCII_GAMEOVER_SCENE,
   pickRandomAsciiScene,
   renderAsciiSceneFrames,
   type AsciiSceneDefinition,
-} from './asciiScenes';
-import { wrapPreHtml } from './asciiUtils';
-import { getDefaultBotStore, type BotStore, type PairContext } from './botStore';
+} from './asciiScenes.js';
+import { wrapPreHtml } from './asciiUtils.js';
+import { getDefaultBotStore, type BotStore, type PairContext } from './botStore.js';
 import {
   buildDisputedEventKeyboard,
   buildEventReactionKeyboard,
@@ -27,7 +27,7 @@ import {
   formatSettingsMessage,
   formatWelcomeActiveMessage,
   type InlineKeyboardMarkup,
-} from './messages';
+} from './messages.js';
 import {
   tgAnswerCallbackQuery,
   tgDeleteMessage,
@@ -35,7 +35,7 @@ import {
   tgSendMessage,
   type TelegramApiResponse,
   type TelegramSentMessage,
-} from './telegramApi';
+} from './telegramApi.js';
 
 export interface TelegramUser {
   id: number;
@@ -148,21 +148,45 @@ function isGroupChat(chat: TelegramChat): boolean {
   return chat.type === 'group' || chat.type === 'supergroup';
 }
 
+type UpdateResult = { ok: true; deduplicated?: boolean; action?: string };
+
 export async function processTelegramUpdate(
   update: TelegramUpdate,
   deps: BotEngineDeps = {}
-): Promise<{ ok: true; deduplicated?: boolean; action?: string }> {
+): Promise<UpdateResult> {
   const store = deps.store || getDefaultBotStore();
-  const transport = deps.transport || defaultTransport;
-  const sleep = deps.sleep || defaultSleep;
-  const randomFn = deps.randomFn || Math.random;
+  const hasId = typeof update.update_id === 'number';
 
-  if (typeof update.update_id === 'number') {
+  if (hasId) {
     const claimed = await store.claimWebhookUpdate(update.update_id);
     if (!claimed) {
       return { ok: true, deduplicated: true };
     }
   }
+
+  try {
+    return await processClaimedUpdate(update, deps, store);
+  } catch (err) {
+    // Снимаем метку «обработано», чтобы повторная доставка от Telegram не была отброшена как дубликат
+    if (hasId && store.releaseWebhookUpdate) {
+      try {
+        await store.releaseWebhookUpdate(update.update_id);
+      } catch {
+        // ignore: ошибку обработки важнее
+      }
+    }
+    throw err;
+  }
+}
+
+async function processClaimedUpdate(
+  update: TelegramUpdate,
+  deps: BotEngineDeps,
+  store: BotStore
+): Promise<UpdateResult> {
+  const transport = deps.transport || defaultTransport;
+  const sleep = deps.sleep || defaultSleep;
+  const randomFn = deps.randomFn || Math.random;
 
   // -------------------------------------------------------------------------
   // 1. Handle Inline Keyboard Callbacks
@@ -1042,6 +1066,7 @@ async function handleEventCallbackAction(params: {
       winnerSide: 'left',
       winnerName: actor.display_name,
       loserName: recipient.display_name,
+      finishThreshold: pair.finish_threshold,
     });
 
     await playAsciiAnimationSequence({

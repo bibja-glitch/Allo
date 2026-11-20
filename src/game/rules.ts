@@ -8,7 +8,7 @@ import type {
   PlayerProgress,
   Profile,
   RankTier,
-} from '../types/game';
+} from '../types/game.js';
 
 export const FINISH_BANNER_TITLE = 'ПРИДУРОК, КОТОРЫЙ НЕ ПОДНЯЛ ТЕЛЕФОН';
 

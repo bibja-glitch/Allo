@@ -26,6 +26,8 @@ export interface AsciiSceneDefinition {
     winnerSide: 'left' | 'right';
     winnerName: string;
     loserName: string;
+    /** Нужен только финальной GAME OVER-сцене (цель раунда настраивается 3–50). */
+    finishThreshold?: number;
   }) => string[];
 }
 

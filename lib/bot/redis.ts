@@ -19,9 +19,13 @@ export function getRedisClient(): Redis {
       );
     }
 
+    // Данные в хранилище — уже JSON-строки, которые код парсит сам (JSON.parse).
+    // Без этого флага Upstash сам десериализует ответы: массивы/объекты приходят
+    // уже распарсенными, а строки "true"/"123" превращаются в boolean/number.
     redisClient = new Redis({
       url,
       token,
+      automaticDeserialization: false,
     });
   }
   return redisClient;

@@ -9,8 +9,8 @@ import {
   resolvePairRecipient,
   validateEventCreation,
   validateEventTransition,
-} from './rules';
-import type { CallEvent, Pair, PairMember, Profile } from '../types/game';
+} from './rules.js';
+import type { CallEvent, Pair, PairMember, Profile } from '../types/game.js';
 
 const p1: Profile = {
   id: 'user-1',

@@ -3,10 +3,11 @@ import express from 'express';
 import http from 'node:http';
 import {
   handleBotHealth,
+  handleStatusPage,
   handleCleanupExpiredAnimations,
   handleSetupWebhook,
   handleTelegramBotWebhook,
-} from './lib/bot/httpHandlers';
+} from './lib/bot/httpHandlers.js';
 
 async function startServer() {
   const app = express();
@@ -15,10 +16,24 @@ async function startServer() {
 
   app.use(express.json({ limit: '2mb' }));
 
-  app.get('/api/health', async (_req, res) => {
-    const out = await handleBotHealth();
-    res.status(out.status).json(out.body);
-  });
+  const statusHandler = async (req: express.Request, res: express.Response) => {
+    const accept = String(req.headers.accept || '');
+    const asJson = req.query.format === 'json' || !accept.includes('text/html');
+    try {
+      if (asJson) {
+        const out = await handleBotHealth();
+        res.status(out.status).json(out.body);
+      } else {
+        const page = await handleStatusPage();
+        res.status(page.status).type('html').send(page.html);
+      }
+    } catch (err) {
+      console.error('Health check failed:', err);
+      res.status(500).json({ ok: false, error: err instanceof Error ? err.message : 'Health check failed' });
+    }
+  };
+
+  app.get('/api/health', statusHandler);
 
   app.post('/api/telegram/webhook', async (req, res) => {
     const out = await handleTelegramBotWebhook(req.headers, req.body);
@@ -39,19 +54,7 @@ async function startServer() {
     res.status(out.status).json(out.body);
   });
 
-  app.get('/', async (_req, res) => {
-    const out = await handleBotHealth();
-    res.status(out.status).json({
-      ...out.body,
-      message: 'Telegram Bot «АЛЛО, РОУД! — Pixel Fatality» работает. Используйте бота в Telegram.',
-      endpoints: {
-        webhook: '/api/telegram/webhook',
-        setup: '/api/telegram/setup',
-        cleanup: '/api/telegram/cleanup',
-        health: '/api/health',
-      },
-    });
-  });
+  app.get('/', statusHandler);
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`АЛЛО, РОУД! Telegram Bot webhook server listening on http://localhost:${PORT}`);

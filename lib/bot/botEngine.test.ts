@@ -5,21 +5,21 @@ import {
   ASCII_SCENES,
   pickRandomAsciiScene,
   renderAsciiSceneFrames,
-} from './asciiScenes';
+} from './asciiScenes.js';
 import {
   buildFinalFatalityFrame,
   FINAL_FATALITY_LINES,
   SCENE_HEIGHT,
   SCENE_WIDTH,
   wrapPreHtml,
-} from './asciiUtils';
+} from './asciiUtils.js';
 import {
   processTelegramUpdate,
   type TelegramTransport,
   type TelegramUpdate,
-} from './botEngine';
-import { LocalBotStore } from './botStore';
-import type { InlineKeyboardMarkup } from './messages';
+} from './botEngine.js';
+import { LocalBotStore } from './botStore.js';
+import type { InlineKeyboardMarkup } from './messages.js';
 
 interface TransportCall {
   type: 'sendMessage' | 'editMessageText' | 'deleteMessage' | 'answerCallbackQuery';

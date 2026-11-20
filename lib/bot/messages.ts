@@ -1,5 +1,5 @@
-import type { CallEvent, Pair, PlayerProgress, Profile } from '../../src/types/game';
-import { FINISH_BANNER_TITLE } from '../../src/game/rules';
+import type { CallEvent, Pair, PlayerProgress, Profile } from '../../src/types/game.js';
+import { FINISH_BANNER_TITLE } from '../../src/game/rules.js';
 
 export interface InlineKeyboardButton {
   text: string;

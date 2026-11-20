@@ -17,10 +17,9 @@
 - `lib/bot/asciiScenesPart2.ts` — 15 дополнительных абсурдных сцен (падающий шкаф, восстание роботов, снежный ком, щупальца, вулкан, гигантский паук, падение со скалы, пиратская пушка, привидение, ракета, рояль, кот с лазерами, перекати-поле, смертельное диско, безумный пылесос).
 - `lib/bot/asciiScenes.ts` — менеджер сцен (`pickRandomAsciiScene` без повтора подряд + финальная сцена `GAME OVER`).
 - `lib/bot/botEngine.ts` — логика команд (`/start`, `/miss`, `/score`, `/history`, `/settings`, `/join`, `/bind`, `/menu`), Inline-кнопок и покадрового ASCII-проигрывателя с обработкой `retry_after` и `"message is not modified"`.
-- `lib/bot/botStore.ts` — хранение данных в **Supabase PostgreSQL** (с историей `recent_scenes` на пару и локальным fallback для тестов).
+- `lib/bot/botStore.ts`, `storage.ts`, `users.ts`, `events.ts`, `redis.ts` — хранение данных в **Upstash Redis** (без `UPSTASH_*` переменных работает локальный in-memory fallback — только для разработки и тестов, на Vercel состояние между вызовами не сохраняется).
 - `lib/bot/messages.ts` — форматирование сообщений и клавиатур Telegram.
 - `lib/bot/telegramApi.ts` — обёртка над Telegram Bot API (`sendMessage`, `editMessageText`, `deleteMessage` с поддержкой `parse_mode: 'HTML'` и `429 retry_after`).
-- `supabase/schema.sql` и `supabase/migrations/004_ascii_chaos.sql` — SQL-схема и триггеры Supabase PostgreSQL.
 - `server.ts` — локальный Express-сервер для разработки и тестирования.
 
 ---
@@ -38,12 +37,11 @@
 
 ---
 
-## 2. Настройка базы данных Supabase PostgreSQL
+## 2. Настройка базы данных Upstash Redis
 
-1. Создайте проект на [supabase.com](https://supabase.com).
-2. Перейдите в **SQL Editor → New Query**.
-3. Выполните `supabase/schema.sql` (или примените `supabase/migrations/004_ascii_chaos.sql`, если база уже была развёрнута ранее).
-4. В **Project Settings → API** скопируйте `Project URL` → `SUPABASE_URL` и `service_role` secret key → `SUPABASE_SERVICE_ROLE_KEY`.
+1. Создайте базу на [upstash.com](https://upstash.com) (Redis).
+2. На вкладке **REST API** скопируйте `UPSTASH_REDIS_REST_URL` и `UPSTASH_REDIS_REST_TOKEN`.
+3. Схему создавать не нужно — ключи создаются ботом автоматически.
 
 ---
 
@@ -55,8 +53,9 @@
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_BOT_USERNAME`
    - `TELEGRAM_WEBHOOK_SECRET`
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `UPSTASH_REDIS_REST_URL`
+   - `UPSTASH_REDIS_REST_TOKEN`
+   - `CRON_SECRET` (Vercel Cron отправляет его как `Authorization: Bearer ...` в `/api/telegram/cleanup`)
    - `APP_URL` — ваш домен на Vercel, например `https://allo-road-bot.vercel.app`
 4. Сделайте **Deploy**.
 5. Зарегистрируйте Webhook и меню команд:

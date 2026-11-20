@@ -1,4 +1,4 @@
-import type { InlineKeyboardMarkup } from './messages';
+import type { InlineKeyboardMarkup } from './messages.js';
 
 export interface TelegramApiResponse<T = unknown> {
   ok: boolean;
@@ -36,6 +36,7 @@ async function postJson<T>(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
     });
     const data = (await res.json()) as {
       ok?: boolean;
@@ -146,4 +147,15 @@ export async function tgSetMyCommands(): Promise<TelegramApiResponse<boolean>> {
 
 export async function tgGetMe(): Promise<TelegramApiResponse<{ id: number; username?: string; first_name: string }>> {
   return postJson<{ id: number; username?: string; first_name: string }>('getMe', {});
+}
+
+export interface TelegramWebhookInfo {
+  url?: string;
+  pending_update_count?: number;
+  last_error_date?: number;
+  last_error_message?: string;
+}
+
+export async function tgGetWebhookInfo(): Promise<TelegramApiResponse<TelegramWebhookInfo>> {
+  return postJson<TelegramWebhookInfo>('getWebhookInfo', {});
 }

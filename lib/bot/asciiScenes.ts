@@ -21,13 +21,18 @@ export const ASCII_GAMEOVER_SCENE: AsciiSceneDefinition = {
   frameDelayMs: 950,
   durationMs: 950 * 8,
   participants: ['winner', 'loser'],
-  buildFrames: ({ loserName }) => {
+  buildFrames: ({ loserName, finishThreshold }) => {
+    const n = finishThreshold && finishThreshold > 0 ? finishThreshold : 10;
+    const center = (text: string) => {
+      const t = text.slice(0, 32);
+      return ' '.repeat(Math.floor((32 - t.length) / 2)) + t;
+    };
     const shortLoser = loserName.slice(0, 20).toUpperCase();
     const baseFrames: string[][] = [
       [
         '================================',
         '',
-        '    [ 10 / 10  FINISH! ]        ',
+        center(`[ ${n} / ${n}  FINISH! ]`),
         '',
         '         O            |         ',
         '        /|\\    >>>   [F]        ',
@@ -90,7 +95,7 @@ export const ASCII_GAMEOVER_SCENE: AsciiSceneDefinition = {
         '',
         '       G A M E   O V E R        ',
         '',
-        '    НЕ ПОДНЯЛ ТЕЛЕФОН 10 РАЗ    ',
+        center(`НЕ ПОДНЯЛ ТЕЛЕФОН ${n} РАЗ`),
         '',
         '================================',
       ],
@@ -101,7 +106,7 @@ export const ASCII_GAMEOVER_SCENE: AsciiSceneDefinition = {
         '',
         '           GAME OVER            ',
         '',
-        '      +10 / ТИТУЛ ВРУЧЁН!       ',
+        center(`+${n} / ТИТУЛ ВРУЧЁН!`),
         '',
         '================================',
       ],
@@ -152,6 +157,7 @@ export function renderAsciiSceneFrames(
     winnerSide: 'left' | 'right';
     winnerName: string;
     loserName: string;
+    finishThreshold?: number;
   }
 ): string[] {
   return scene.buildFrames(params);

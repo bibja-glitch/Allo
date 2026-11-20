@@ -2,8 +2,8 @@ import {
   buildFinalFatalityFrame,
   renderDirectionalFrame,
   type DirectionalFrameSpec,
-} from './asciiUtils';
-import type { AsciiSceneDefinition } from './asciiScenesPart1';
+} from './asciiUtils.js';
+import type { AsciiSceneDefinition } from './asciiScenesPart1.js';
 
 function compileDirectionalScene(
   specs: DirectionalFrameSpec[],

@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
-import type { CallEvent, EventStatus } from '../../src/types/game';
-import { getRedisClient, isUpstashConfigured } from './redis';
+import type { CallEvent, EventStatus } from '../../src/types/game.js';
+import { getRedisClient, isUpstashConfigured } from './redis.js';
+
+const WEBHOOK_DEDUP_TTL_SECONDS = 24 * 60 * 60;
+const PENDING_ANIMATIONS_KEY = 'pending_animations';
+/** Сколько последних событий пары читать за один запрос (защита от роста числа команд Redis). */
+const MAX_EVENTS_LOADED = 500;
 
 interface LocalEventsDb {
   events: CallEvent[];
@@ -22,8 +27,19 @@ export async function claimWebhookUpdate(updateId: number): Promise<boolean> {
   }
 
   const redis = getRedisClient();
-  const added = await redis.setnx(`webhook_update:${updateId}`, '1');
-  return Boolean(added);
+  // NX + TTL: ключи дедупликации не копятся вечно (Telegram повторяет апдейты максимум несколько часов)
+  const res = await redis.set(`webhook_update:${updateId}`, '1', { nx: true, ex: WEBHOOK_DEDUP_TTL_SECONDS });
+  return res === 'OK';
+}
+
+/** Снимает метку «апдейт обработан», чтобы повтор от Telegram после ошибки не был отброшен как дубликат. */
+export async function releaseWebhookUpdate(updateId: number): Promise<void> {
+  if (!isUpstashConfigured()) {
+    localEvents.processedUpdates = localEvents.processedUpdates.filter((id) => id !== updateId);
+    return;
+  }
+  const redis = getRedisClient();
+  await redis.del(`webhook_update:${updateId}`);
 }
 
 export async function createMissedCallEvent(ev: Omit<CallEvent, 'id'>): Promise<CallEvent> {
@@ -100,7 +116,7 @@ export async function getEventsForPair(pairId: string): Promise<CallEvent[]> {
   }
 
   const redis = getRedisClient();
-  const eventIds = await redis.lrange<string>(`events:${pairId}`, 0, -1);
+  const eventIds = await redis.lrange<string>(`events:${pairId}`, -MAX_EVENTS_LOADED, -1);
   if (!eventIds || eventIds.length === 0) return [];
 
   const pipeline = redis.pipeline();
@@ -148,6 +164,18 @@ export async function updateEventLifecycle(
   }
 
   await redis.hset(`event:${eventId}`, patchMap);
+
+  // Индекс незавершённых анимаций для cron-очистки: score = время истечения (мс)
+  if (typeof patch.animation_expires_at === 'string' && !patch.animation_deleted_at) {
+    const expiresMs = new Date(patch.animation_expires_at).getTime();
+    if (Number.isFinite(expiresMs)) {
+      await redis.zadd(PENDING_ANIMATIONS_KEY, { score: expiresMs, member: eventId });
+    }
+  }
+  if (patch.animation_deleted_at) {
+    await redis.zrem(PENDING_ANIMATIONS_KEY, eventId);
+  }
+
   const updated = await getEventById(eventId);
   if (!updated) throw new Error('Event not found after update');
   return updated;
@@ -164,7 +192,20 @@ export async function findExpiredPendingAnimations(_nowIso = new Date().toISOStr
         new Date(e.animation_expires_at).getTime() <= nowMs
     );
   }
-  return [];
+
+  const redis = getRedisClient();
+  const nowMs = new Date(_nowIso).getTime();
+  const ids = await redis.zrange<string[]>(PENDING_ANIMATIONS_KEY, 0, nowMs, { byScore: true });
+  const result: CallEvent[] = [];
+  for (const id of ids || []) {
+    const ev = await getEventById(String(id));
+    if (!ev || ev.animation_deleted_at || !ev.animation_message_id) {
+      await redis.zrem(PENDING_ANIMATIONS_KEY, String(id));
+      continue;
+    }
+    result.push(ev);
+  }
+  return result;
 }
 
 function parseCallEventHash(raw: Record<string, string>): CallEvent {

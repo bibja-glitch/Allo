@@ -4,16 +4,17 @@ import type {
   Pair,
   PairMember,
   Profile,
-} from '../../src/types/game';
+} from '../../src/types/game.js';
 import {
   claimWebhookUpdate,
   createMissedCallEvent,
   findExpiredPendingAnimations,
   getEventById,
   getEventsForPair,
+  releaseWebhookUpdate,
   updateEventLifecycle,
-} from './events';
-import { isUpstashConfigured } from './redis';
+} from './events.js';
+import { isUpstashConfigured } from './redis.js';
 import {
   bindGroupChat,
   createPair,
@@ -23,12 +24,12 @@ import {
   joinPairByCode,
   recordPlayedScene,
   updateSettings,
-} from './storage';
+} from './storage.js';
 import {
   getBotConnectionByUserId,
   getUserById,
   upsertTelegramUser,
-} from './users';
+} from './users.js';
 
 export interface PairContext {
   pair: Pair | null;
@@ -41,6 +42,7 @@ export interface PairContext {
 export interface BotStore {
   isPersistentDatabase(): boolean;
   claimWebhookUpdate(updateId: number): Promise<boolean>;
+  releaseWebhookUpdate?(updateId: number): Promise<void>;
   upsertTelegramUser(params: {
     telegramId: string;
     privateChatId?: string;
@@ -91,6 +93,10 @@ export class UpstashBotStore implements BotStore {
 
   async claimWebhookUpdate(updateId: number): Promise<boolean> {
     return await claimWebhookUpdate(updateId);
+  }
+
+  async releaseWebhookUpdate(updateId: number): Promise<void> {
+    await releaseWebhookUpdate(updateId);
   }
 
   async upsertTelegramUser(params: {

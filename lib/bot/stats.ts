@@ -1,5 +1,5 @@
-import type { CallEvent, GameStats, PairMember, Profile } from '../../src/types/game';
-import { computePlayerProgress } from '../../src/game/rules';
+import type { CallEvent, GameStats, PairMember, Profile } from '../../src/types/game.js';
+import { computePlayerProgress } from '../../src/game/rules.js';
 
 export function computeGameStats(params: {
   pairId: string;

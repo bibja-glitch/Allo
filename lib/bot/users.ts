@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import type { BotConnection, Profile } from '../../src/types/game';
-import { getRedisClient, isUpstashConfigured } from './redis';
+import type { BotConnection, Profile } from '../../src/types/game.js';
+import { getRedisClient, isUpstashConfigured } from './redis.js';
 
 const memoryProfiles = new Map<string, Profile>();
 const memoryTgToId = new Map<string, string>();

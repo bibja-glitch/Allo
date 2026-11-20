@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import type { Pair, PairMember, Profile } from '../../src/types/game';
-import { getRedisClient, isUpstashConfigured } from './redis';
-import { getBotConnectionByUserId } from './users';
+import type { Pair, PairMember } from '../../src/types/game.js';
+import { getRedisClient, isUpstashConfigured } from './redis.js';
+import { getBotConnectionByUserId, setNotificationEnabled } from './users.js';
 
 interface LocalPairDbData {
   pairs: Map<string, Pair>;
@@ -251,14 +251,7 @@ export async function updateSettings(params: {
   if (params.notificationEnabled !== undefined) {
     const conn = await getBotConnectionByUserId(params.userId);
     if (conn) {
-      if (!isUpstashConfigured()) {
-        conn.notification_enabled = params.notificationEnabled;
-      } else {
-        const redis = getRedisClient();
-        await redis.hset(`bot_connection:${params.userId}`, {
-          notification_enabled: String(params.notificationEnabled),
-        });
-      }
+      await setNotificationEnabled(params.userId, params.notificationEnabled);
     }
   }
 }
