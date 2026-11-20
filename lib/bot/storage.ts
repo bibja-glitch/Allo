@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { Pair, PairMember } from '../../src/types/game.js';
 import { getRedisClient, isUpstashConfigured } from './redis.js';
 import { getBotConnectionByUserId, setNotificationEnabled } from './users.js';
+import { normalizeInviteCode } from './inviteCode.js';
 
 interface LocalPairDbData {
   pairs: Map<string, Pair>;
@@ -123,12 +124,7 @@ export async function joinPairByCode(
   code: string,
   groupChatId?: string | null
 ): Promise<Pair> {
-  const existingPairId = await getUserPairId(userId);
-  if (existingPairId) {
-    throw new Error('Ты уже состоишь в игровой паре.');
-  }
-
-  const normalized = code.trim().toUpperCase();
+  const normalized = normalizeInviteCode(code);
   let pairId: string | null = null;
 
   if (!isUpstashConfigured()) {
@@ -139,12 +135,29 @@ export async function joinPairByCode(
   }
 
   if (!pairId) {
-    throw new Error('Пара с таким кодом приглашения не найдена.');
+    throw new Error(
+      `Код «${normalized || code.trim()}» не найден. Проверь, что он скопирован полностью (формат ALLO-XXXX) и написан латинскими буквами.`
+    );
   }
 
   const pair = await getPairById(pairId);
   if (!pair) {
     throw new Error('Пара не найдена.');
+  }
+
+  const existingPairId = await getUserPairId(userId);
+  if (existingPairId) {
+    if (existingPairId === pairId) {
+      throw new Error('Это твой собственный код приглашения. Отправь его другу — пусть он введёт его в боте со своего аккаунта.');
+    }
+    const existingPair = await getPairById(existingPairId);
+    const existingMembers = existingPair ? await getPairMembers(existingPairId) : [];
+    const isSoloWaiting = !existingPair || (existingPair.status === 'waiting' && existingMembers.length <= 1);
+    if (!isSoloWaiting) {
+      throw new Error('Ты уже состоишь в игровой паре.');
+    }
+    // У пользователя есть только своя «пустая» пара, которую никто не занял — заменяем её приглашённой
+    await abandonSoloPair(userId, existingPairId, existingPair?.invitation_code || null);
   }
 
   const members = await getPairMembers(pairId);
@@ -183,6 +196,21 @@ export async function joinPairByCode(
   await redis.set(`user_pair:${userId}`, pairId);
 
   return pair;
+}
+
+async function abandonSoloPair(userId: string, pairId: string, invitationCode: string | null): Promise<void> {
+  if (!isUpstashConfigured()) {
+    localDb.pairs.delete(pairId);
+    localDb.members.delete(pairId);
+    if (invitationCode) localDb.invites.delete(invitationCode);
+    localDb.userPair.delete(userId);
+    return;
+  }
+  const redis = getRedisClient();
+  await redis.del(`pairs:${pairId}`);
+  await redis.del(`pair_members:${pairId}`);
+  if (invitationCode) await redis.del(`invitation:${invitationCode}`);
+  await redis.del(`user_pair:${userId}`);
 }
 
 export async function bindGroupChat(pairId: string, groupChatId: string | null): Promise<void> {
