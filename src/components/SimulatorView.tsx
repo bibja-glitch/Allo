@@ -10,6 +10,10 @@ import {
   Eye,
   RotateCw,
 } from 'lucide-react';
+import {
+  PIXEL_CHARACTERS,
+  resolvePixelCharacter,
+} from '../../lib/bot/pixelCharacters';
 import { getRankForSteps } from '../game/rules';
 import type {
   SceneFramesResponse,
@@ -18,6 +22,8 @@ import type {
   SimPanelMode,
   SimPlayer,
 } from '../types/ui';
+import { PixelDuelArena } from './PixelDuelArena';
+import { PixelSprite } from './PixelSprite';
 
 interface SimulatorViewProps {
   scenes: SceneSummary[];
@@ -25,13 +31,13 @@ interface SimulatorViewProps {
 }
 
 const DEFAULT_SHORT_DESC =
-  'АЛЛО, РОУД — минималистичная игра для двух друзей. Не взял трубку — получил +1 шаг к финалу.';
+  'АЛЛО, ПИДР — минималистичная игра для двух друзей. Не взял трубку — получил +1 шаг к финалу.';
 
 const DEFAULT_FULL_DESC = [
-  'АЛЛО, РОУД — дуэль на внимательность для двух друзей.',
+  'АЛЛО, ПИДР — дуэль на внимательность для двух друзей.',
   '— Создайте пару и отправьте код другу',
   '— Если друг не поднял телефон — зафиксируйте пропуск',
-  '— В чат прилетит короткая ASCII-сцена и счётчик раунда',
+  '— В чат прилетит короткая текстовая анимация и счётчик раунда',
 ].join('\n');
 
 function buildBar(steps: number, limit: number): string {
@@ -49,8 +55,8 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
   const [panelMode, setPanelMode] = useState<SimPanelMode>('menu');
 
   const [players, setPlayers] = useState<Record<'kirill' | 'denis', SimPlayer>>({
-    kirill: { id: 'kirill', name: 'Кирилл', missed: 0, callbacks: 0 },
-    denis: { id: 'denis', name: 'Денис', missed: 0, callbacks: 0 },
+    kirill: { id: 'kirill', name: 'Кирилл', pixelCharacter: 'knight', missed: 0, callbacks: 0 },
+    denis: { id: 'denis', name: 'Денис', pixelCharacter: 'cat', missed: 0, callbacks: 0 },
   });
 
   const [events, setEvents] = useState<SimMissEvent[]>([]);
@@ -256,10 +262,10 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
     clearTimer();
     setActivePlayback(null);
     setEvents([]);
-    setPlayers({
-      kirill: { id: 'kirill', name: 'Кирилл', missed: 0, callbacks: 0 },
-      denis: { id: 'denis', name: 'Денис', missed: 0, callbacks: 0 },
-    });
+    setPlayers((prev) => ({
+      kirill: { ...prev.kirill, missed: 0, callbacks: 0 },
+      denis: { ...prev.denis, missed: 0, callbacks: 0 },
+    }));
     setStatusNote('Раунд сброшен. Новый счёт 0 : 0.');
   };
 
@@ -290,8 +296,32 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
         ? players.denis
         : null;
 
+  const arenaPlayers = [
+    {
+      id: 'kirill',
+      name: players.kirill.name || 'Игрок 1',
+      laneIndex: 0 as const,
+      characterId: players.kirill.pixelCharacter,
+      confirmedSteps: players.kirill.missed,
+      rankTitle: kirillRank.current.title,
+      isViewer: actorId === 'kirill',
+    },
+    {
+      id: 'denis',
+      name: players.denis.name || 'Игрок 2',
+      laneIndex: 1 as const,
+      characterId: players.denis.pixelCharacter,
+      confirmedSteps: players.denis.missed,
+      rankTitle: denisRank.current.title,
+      isViewer: actorId === 'denis',
+    },
+  ];
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div className="space-y-6">
+      <PixelDuelArena players={arenaPlayers} finishThreshold={finishLimit} compact />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
       {/* Left column: Bot Profile Preview & Pair Controls */}
       <div className="space-y-5 lg:col-span-5">
         <section className="rounded-lg border border-zinc-200 bg-white p-5">
@@ -304,7 +334,7 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
               ) : (
                 <img
                   src="/src/assets/images/bot_avatar_minimal_1795174484247.jpg"
-                  alt="Минималистичный аватар Telegram-бота АЛЛО, РОУД!"
+                  alt="Минималистичный аватар Telegram-бота АЛЛО, ПИДР!"
                   onError={() => setAvatarError(true)}
                   className="h-full w-full object-cover"
                   referrerPolicy="no-referrer"
@@ -313,7 +343,7 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-display text-base font-bold text-zinc-950">АЛЛО, РОУД!</h2>
+                <h2 className="font-display text-base font-bold text-zinc-950">АЛЛО, ПИДР!</h2>
                 <span className="font-mono text-xs text-zinc-500">bot · deploy-sync</span>
               </div>
               <p className="mt-1 text-xs leading-relaxed text-zinc-600">{DEFAULT_SHORT_DESC}</p>
@@ -332,14 +362,17 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
 
         <section className="rounded-lg border border-zinc-200 bg-white p-5">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-sm font-semibold text-zinc-950">Управление дуэлью</h3>
+            <h3 className="font-display text-sm font-semibold text-zinc-950">
+              Имена, герои и управление
+            </h3>
             <span className="font-mono text-xs tabular-nums text-zinc-500">
               {players.kirill.missed} : {players.denis.missed} · лимит {finishLimit}
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
-            {([players.kirill, players.denis] as const).map((p) => {
+            {([players.kirill, players.denis] as const).map((p, idx) => {
+              const laneIdx: 0 | 1 = idx === 1 ? 1 : 0;
               const rank = p.id === 'kirill' ? kirillRank.current : denisRank.current;
               const isSelected = actorId === p.id;
               return (
@@ -350,28 +383,67 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-zinc-950">{p.name}</span>
-                      <span className="text-xs text-zinc-500">· {rank.title}</span>
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <PixelSprite characterId={p.pixelCharacter} laneIndex={laneIdx} size={24} />
+                      <input
+                        type="text"
+                        maxLength={24}
+                        aria-label={`Имя игрока ${idx + 1}`}
+                        value={p.name}
+                        onChange={(e) => {
+                          const nextName = e.target.value;
+                          setPlayers((prev) => ({
+                            ...prev,
+                            [p.id]: { ...prev[p.id], name: nextName },
+                          }));
+                        }}
+                        className="w-28 rounded border border-zinc-200 bg-white px-2 py-0.5 text-sm font-semibold text-zinc-950 focus:border-zinc-950 focus:outline-none"
+                      />
+                      <span className="truncate text-xs text-zinc-500">· {rank.title}</span>
                     </div>
                     <span className="font-mono text-sm font-semibold tabular-nums text-zinc-950">
                       {p.missed}/{finishLimit}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <span className="font-mono text-xs tracking-wider text-zinc-800">
-                      {buildBar(p.missed, finishLimit)}
-                    </span>
+
+                  <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {PIXEL_CHARACTERS.map((hero) => {
+                        const activeHero = p.pixelCharacter === hero.id;
+                        return (
+                          <button
+                            key={hero.id}
+                            type="button"
+                            title={hero.name}
+                            aria-label={`${p.name}: выбрать героя ${hero.name}`}
+                            onClick={() =>
+                              setPlayers((prev) => ({
+                                ...prev,
+                                [p.id]: { ...prev[p.id], pixelCharacter: hero.id },
+                              }))
+                            }
+                            className={`rounded border p-1 transition-colors ${
+                              activeHero
+                                ? 'border-zinc-950 bg-white ring-1 ring-zinc-950'
+                                : 'border-zinc-200 bg-white/70 hover:bg-white'
+                            }`}
+                          >
+                            <PixelSprite characterId={hero.id} size={18} />
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => setActorId(p.id)}
-                      className={`rounded px-2 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                      className={`self-start sm:self-auto shrink-0 rounded px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap ${
                         isSelected
                           ? 'bg-zinc-950 text-white'
                           : 'border border-zinc-200 text-zinc-600 hover:bg-zinc-100'
                       }`}
                     >
-                      {isSelected ? 'Звонит сейчас' : 'Выбрать звонящим'}
+                      {isSelected ? 'Звонит' : 'Звонящий'}
                     </button>
                   </div>
                 </div>
@@ -464,7 +536,7 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
                 />
               </div>
               <div>
-                <div className="text-sm font-semibold leading-tight">АЛЛО, РОУД!</div>
+                <div className="text-sm font-semibold leading-tight">АЛЛО, ПИДР!</div>
                 <div className="text-[11px] text-zinc-400">
                   чат {actor.name} → {recipient.name}
                 </div>
@@ -679,17 +751,45 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
 
               <div className="mt-3.5 text-sm text-zinc-800">
                 {panelMode === 'menu' && (
-                  <div className="space-y-2.5">
-                    <div className="font-semibold text-zinc-950">АЛЛО, РОУД</div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="font-semibold text-zinc-950">АЛЛО, ПИДР</div>
+                      <span className="font-mono text-[11px] text-zinc-400">1 сообщение в чате</span>
+                    </div>
                     <p className="text-xs leading-relaxed text-zinc-600">
-                      Дуэль: Кирилл — Денис · Темп: {fastMode ? 'быстрый (5 кадр.)' : 'полный (8 кадр.)'}
+                      {players.kirill.name} против {players.denis.name} ·{' '}
+                      {fastMode ? 'быстрый темп' : 'полный темп'}
                     </p>
-                    <div className="space-y-1 font-mono text-xs text-zinc-800">
-                      <div>
-                        Кирилл: {players.kirill.missed}/{finishLimit} {buildBar(players.kirill.missed, finishLimit)}
+                    <div className="space-y-1.5 rounded bg-zinc-50 p-2.5 font-mono text-xs text-zinc-800">
+                      {([players.kirill, players.denis] as const).map((p, idx) => {
+                        const hero = resolvePixelCharacter(p.pixelCharacter, idx === 1 ? 1 : 0);
+                        return (
+                          <div key={p.id} className="flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              {hero.tgGlyph} {p.name} ({hero.name})
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              {buildBar(p.missed, finishLimit)} {p.missed}/{finishLimit}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Preview of slim 2-row 4-button Telegram inline keyboard */}
+                    <div className="space-y-1.5 border-t border-zinc-100 pt-2.5">
+                      <div className="rounded border border-zinc-200 bg-zinc-100/80 py-1.5 text-center text-xs font-medium text-zinc-800">
+                        Он не поднял трубку
                       </div>
-                      <div>
-                        Денис: &nbsp;{players.denis.missed}/{finishLimit} {buildBar(players.denis.missed, finishLimit)}
+                      <div className="grid grid-cols-3 gap-1.5 text-center text-[11px] font-medium text-zinc-700">
+                        <div className="rounded border border-zinc-200 bg-zinc-100/80 py-1.5">
+                          Счёт
+                        </div>
+                        <div className="rounded border border-zinc-200 bg-zinc-100/80 py-1.5">
+                          Перезвонил
+                        </div>
+                        <div className="rounded border border-zinc-200 bg-zinc-100/80 py-1.5">
+                          Настройки ↗
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -700,13 +800,21 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
                     <div className="font-semibold text-zinc-950">Счёт раунда</div>
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center justify-between border-b border-zinc-100 pb-1.5">
-                        <span>Кирилл · {kirillRank.current.title}</span>
+                        <span>
+                          {players.kirill.name} ·{' '}
+                          {resolvePixelCharacter(players.kirill.pixelCharacter, 0).name} ·{' '}
+                          {kirillRank.current.title}
+                        </span>
                         <span className="font-mono font-semibold tabular-nums">
                           {players.kirill.missed}/{finishLimit}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span>Денис · {denisRank.current.title}</span>
+                        <span>
+                          {players.denis.name} ·{' '}
+                          {resolvePixelCharacter(players.denis.pixelCharacter, 1).name} ·{' '}
+                          {denisRank.current.title}
+                        </span>
                         <span className="font-mono font-semibold tabular-nums">
                           {players.denis.missed}/{finishLimit}
                         </span>
@@ -720,13 +828,13 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
                     <div className="font-semibold text-sm text-zinc-950">Сводка за неделю</div>
                     <div className="grid grid-cols-2 gap-3 pt-1">
                       <div className="rounded border border-zinc-200 p-2.5">
-                        <div className="font-semibold text-zinc-950">Кирилл</div>
+                        <div className="font-semibold text-zinc-950">{players.kirill.name}</div>
                         <div className="mt-1 text-zinc-600 tabular-nums">
                           Пропусков: {players.kirill.missed} · Перезвонов: {players.kirill.callbacks}
                         </div>
                       </div>
                       <div className="rounded border border-zinc-200 p-2.5">
-                        <div className="font-semibold text-zinc-950">Денис</div>
+                        <div className="font-semibold text-zinc-950">{players.denis.name}</div>
                         <div className="mt-1 text-zinc-600 tabular-nums">
                           Пропусков: {players.denis.missed} · Перезвонов: {players.denis.callbacks}
                         </div>
@@ -780,6 +888,7 @@ export function SimulatorView({ scenes, requestedScene }: SimulatorViewProps) {
             {statusNote}
           </div>
         </section>
+      </div>
       </div>
     </div>
   );

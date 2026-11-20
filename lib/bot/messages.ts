@@ -1,6 +1,30 @@
 import type { CallEvent, GameStats, Pair, PlayerProgress, Profile } from '../../src/types/game.js';
 import { FINISH_BANNER_TITLE } from '../../src/game/rules.js';
 import { escapeHtml } from './asciiUtils.js';
+import { resolvePixelCharacter } from './pixelCharacters.js';
+
+export const DEFAULT_WEB_SETTINGS_BASE_URL = 'https://allo-omega-rust.vercel.app';
+
+export function buildPairSettingsUrl(pair?: Pair | null, viewerId?: string): string {
+  const configured = (process.env.WEB_APP_URL || process.env.APP_URL || '').trim();
+  const base = (
+    configured.startsWith('https://') && !configured.includes('run.app')
+      ? configured
+      : DEFAULT_WEB_SETTINGS_BASE_URL
+  ).replace(/\/+$/, '');
+
+  if (!pair?.id || !pair?.web_token) {
+    return base;
+  }
+  const params = new URLSearchParams({
+    pair: pair.id,
+    token: pair.web_token,
+  });
+  if (viewerId) {
+    params.set('u', viewerId);
+  }
+  return `${base}/?${params.toString()}`;
+}
 
 export interface InlineKeyboardButton {
   text: string;
@@ -12,21 +36,21 @@ export type InlineKeyboardMarkup = {
   inline_keyboard: InlineKeyboardButton[][];
 };
 
-export function buildMainMenuKeyboard(): InlineKeyboardMarkup {
+/**
+ * Slim 2-row main menu: zero cluttered walls of buttons.
+ */
+export function buildMainMenuKeyboard(settingsUrl?: string): InlineKeyboardMarkup {
+  const thirdBtn: InlineKeyboardButton = settingsUrl
+    ? { text: 'Настройки ↗', url: settingsUrl }
+    : { text: 'Настройки', callback_data: 'act:settings' };
+
   return {
     inline_keyboard: [
       [{ text: 'Он не поднял трубку', callback_data: 'act:miss' }],
       [
         { text: 'Счёт', callback_data: 'act:score' },
-        { text: 'История', callback_data: 'act:history' },
-      ],
-      [
-        { text: 'Сводка', callback_data: 'act:stats' },
         { text: 'Перезвонил', callback_data: 'act:callback' },
-      ],
-      [
-        { text: 'Превью сцены', callback_data: 'act:preview' },
-        { text: 'Настройки', callback_data: 'act:settings' },
+        thirdBtn,
       ],
     ],
   };
@@ -36,7 +60,10 @@ export function buildUnpairedKeyboard(): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: 'Создать пару', callback_data: 'pair:create' }],
-      [{ text: 'Ввести код приглашения', callback_data: 'pair:join_prompt' }],
+      [
+        { text: 'Ввести код', callback_data: 'pair:join_prompt' },
+        { text: 'Задать имя', callback_data: 'act:name_prompt' },
+      ],
     ],
   };
 }
@@ -77,13 +104,15 @@ export function buildDisputedEventKeyboard(eventId: string): InlineKeyboardMarku
   };
 }
 
-export function buildGameOverKeyboard(): InlineKeyboardMarkup {
+export function buildGameOverKeyboard(settingsUrl?: string): InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [{ text: 'Новый раунд', callback_data: 'set:reset' }],
       [
         { text: 'Счёт', callback_data: 'act:score' },
-        { text: 'Сводка', callback_data: 'act:stats' },
+        settingsUrl
+          ? { text: 'Итоги на сайте ↗', url: settingsUrl }
+          : { text: 'Сводка', callback_data: 'act:stats' },
       ],
     ],
   };
@@ -103,42 +132,29 @@ export function buildBackToMenuKeyboard(): InlineKeyboardMarkup {
 export function buildSettingsKeyboard(params: {
   pair: Pair;
   notificationsEnabled: boolean;
+  settingsUrl?: string;
 }): InlineKeyboardMarkup {
-  const { pair, notificationsEnabled } = params;
-  const mark = (active: boolean, label: string) => (active ? `• ${label}` : label);
+  const { pair, notificationsEnabled, settingsUrl } = params;
+  const rows: InlineKeyboardButton[][] = [];
 
-  const rows: InlineKeyboardButton[][] = [
-    [
-      { text: mark(pair.finish_threshold === 5, 'Цель: 5'), callback_data: 'set:threshold:5' },
-      { text: mark(pair.finish_threshold === 10, '10'), callback_data: 'set:threshold:10' },
-      { text: mark(pair.finish_threshold === 15, '15'), callback_data: 'set:threshold:15' },
-      { text: mark(pair.finish_threshold === 20, '20'), callback_data: 'set:threshold:20' },
-    ],
-    [
-      { text: mark(pair.cooldown_seconds === 0, 'Пауза: 0с'), callback_data: 'set:cooldown:0' },
-      { text: mark(pair.cooldown_seconds === 60, '60с'), callback_data: 'set:cooldown:60' },
-      { text: mark(pair.cooldown_seconds === 120, '120с'), callback_data: 'set:cooldown:120' },
-    ],
-    [
-      {
-        text: pair.fast_animation ? 'Анимация: Быстрая' : 'Анимация: Полная',
-        callback_data: 'set:anim:toggle',
-      },
-      {
-        text: notificationsEnabled ? 'Уведомления: Вкл' : 'Уведомления: Выкл',
-        callback_data: 'set:notif:toggle',
-      },
-    ],
-  ];
+  if (settingsUrl) {
+    rows.push([{ text: 'Открыть настройки на сайте ↗', url: settingsUrl }]);
+  }
+
+  rows.push([
+    { text: 'Сменить имя', callback_data: 'act:name_prompt' },
+    {
+      text: notificationsEnabled ? 'Уведомления: Вкл' : 'Уведомления: Выкл',
+      callback_data: 'set:notif:toggle',
+    },
+  ]);
 
   if (pair.group_chat_id) {
     rows.push([{ text: 'Отвязать общий чат', callback_data: 'set:unbind_group' }]);
   }
 
-  rows.push([
-    { text: 'Сбросить раунд', callback_data: 'set:reset' },
-    { text: 'Меню', callback_data: 'act:menu' },
-  ]);
+  rows.push([{ text: 'Выйти из пары', callback_data: 'pair:leave_prompt' }]);
+  rows.push([{ text: 'Назад в меню', callback_data: 'act:menu' }]);
 
   return { inline_keyboard: rows };
 }
@@ -148,6 +164,14 @@ export function buildMinimalProgressBar(steps: number, threshold: number): strin
   const blocks = 10;
   const filled = Math.min(blocks, Math.round((steps / safeThreshold) * blocks));
   return '▰'.repeat(filled) + '▱'.repeat(blocks - filled);
+}
+
+export function buildPixelTrackLine(steps: number, threshold: number, glyph: string): string {
+  const safeThreshold = Math.max(1, threshold);
+  const blocks = 10;
+  const filled = Math.min(blocks, Math.round((steps / safeThreshold) * blocks));
+  const track = '▪'.repeat(filled) + '▫'.repeat(blocks - filled);
+  return `${glyph} ${track} ⚑`;
 }
 
 export function formatScoreboardLine(
@@ -264,22 +288,24 @@ export function formatWelcomeActiveMessage(params: {
   const me = players.find((p) => p.userId === viewerId);
   const partner = players.find((p) => p.userId !== viewerId);
 
-  const duelLine =
-    me && partner
-      ? `${escapeHtml(me.profile.display_name)} <b>${me.confirmedSteps}/${pair.finish_threshold}</b>  ·  ${escapeHtml(partner.profile.display_name)} <b>${partner.confirmedSteps}/${pair.finish_threshold}</b>`
-      : `Лимит раунда: ${pair.finish_threshold} пропусков`;
+  const trackLines = players.map((p) => {
+    const hero = resolvePixelCharacter(p.profile.pixel_character, p.laneIndex);
+    const label = `${p.profile.display_name.slice(0, 12)} · ${hero.name}`;
+    const score = `${p.confirmedSteps}/${pair.finish_threshold}`;
+    const pad = Math.max(1, 28 - label.length - score.length);
+    return `${label}${' '.repeat(pad)}${score}\n${buildPixelTrackLine(p.confirmedSteps, pair.finish_threshold, hero.tgGlyph)}`;
+  });
 
   const modeNote = pair.group_chat_id
-    ? 'Общий чат подключён — сцены приходят в группу.'
-    : 'Добавьте бота в общий чат и отправьте там /bind для совместных сцен.';
+    ? 'Общий чат привязан.'
+    : 'Имя, пиксельных героев и правила можно настроить на сайте.';
 
   return [
-    '<b>АЛЛО, РОУД</b>',
+    '<b>АЛЛО, ПИДР</b>',
     `<i>${escapeHtml(viewerName)} против ${escapeHtml(partnerName)}</i>`,
     '',
-    duelLine,
-    me ? `Звание: «${escapeHtml(me.currentRank.title)}»` : null,
-    '',
+    players.length > 0 ? `<pre>${escapeHtml(trackLines.join('\n'))}</pre>` : `Лимит: ${pair.finish_threshold}`,
+    me && partner ? `Звание: «${escapeHtml(me.currentRank.title)}»` : null,
     `<i>${modeNote}</i>`,
   ]
     .filter((line): line is string => line !== null)
@@ -293,27 +319,28 @@ export function formatScoreMessage(params: {
 }): string {
   const { viewerId, pair, players } = params;
 
-  const blocks = players.map((p) => {
-    const isMe = p.userId === viewerId;
-    const roleTag = isMe ? ' · вы' : '';
-    const bar = buildMinimalProgressBar(p.confirmedSteps, pair.finish_threshold);
-    const meta: string[] = [`${p.progressPercent}%`];
-    if (p.pendingSteps > 0) meta.push(`ожидает: ${p.pendingSteps}`);
-    if (p.disputedCount > 0) meta.push(`споров: ${p.disputedCount}`);
-    if (p.callbacksCount > 0) meta.push(`перезвонов: ${p.callbacksCount}`);
+  const trackLines = players.map((p) => {
+    const hero = resolvePixelCharacter(p.profile.pixel_character, p.laneIndex);
+    const tag = p.userId === viewerId ? ' (вы)' : '';
+    const left = `${p.profile.display_name.slice(0, 11)}${tag} · ${hero.name}`;
+    const right = `${p.confirmedSteps}/${pair.finish_threshold}`;
+    const pad = Math.max(1, 30 - left.length - right.length);
+    return `${left}${' '.repeat(pad)}${right}\n${buildPixelTrackLine(p.confirmedSteps, pair.finish_threshold, hero.tgGlyph)}`;
+  });
 
-    return [
-      `<b>${escapeHtml(p.profile.display_name)}</b>${roleTag} — <b>${p.confirmedSteps}/${pair.finish_threshold}</b>`,
-      `<code>${bar}</code>  ${meta.join(' · ')}`,
-      `<i>«${escapeHtml(p.currentRank.title)}»</i>`,
-    ].join('\n');
+  const metaLines = players.map((p) => {
+    const hero = resolvePixelCharacter(p.profile.pixel_character, p.laneIndex);
+    const extras: string[] = [`«${escapeHtml(p.currentRank.title)}»`];
+    if (p.pendingSteps > 0) extras.push(`ждёт: ${p.pendingSteps}`);
+    if (p.callbacksCount > 0) extras.push(`перезвонов: ${p.callbacksCount}`);
+    return `<b>${escapeHtml(p.profile.display_name)}</b> (${hero.name}): ${extras.join(' · ')}`;
   });
 
   return [
     '<b>СЧЁТ РАУНДА</b>',
     '',
-    ...blocks.flatMap((b) => [b, '']),
-    `<i>Финиш на ${pair.finish_threshold} шагах — «${FINISH_BANNER_TITLE}»</i>`,
+    `<pre>${escapeHtml(trackLines.join('\n'))}</pre>`,
+    ...metaLines,
   ].join('\n');
 }
 
@@ -394,13 +421,12 @@ export function formatSettingsMessage(params: {
 }): string {
   const { pair, notificationsEnabled } = params;
   return [
-    '<b>НАСТРОЙКИ ПАРЫ</b>',
+    '<b>НАСТРОЙКИ</b>',
     '',
     `Код пары: <code>${escapeHtml(pair.invitation_code)}</code>`,
-    `Лимит раунда: <b>${pair.finish_threshold}</b> пропусков`,
-    `Пауза между отметками: <b>${pair.cooldown_seconds}</b> сек.`,
-    `Анимация: <b>${pair.fast_animation ? 'Быстрая (5 кадров)' : 'Полная (8 кадров)'}</b>`,
-    `Уведомления в личку: <b>${notificationsEnabled ? 'Включены' : 'Выключены'}</b>`,
-    `Общий чат: <b>${pair.group_chat_id ? 'Привязан' : 'Не привязан'}</b>`,
+    `Лимит: <b>${pair.finish_threshold}</b> · Пауза: <b>${pair.cooldown_seconds}с</b>`,
+    `Анимация: <b>${pair.fast_animation ? 'Быстрая' : 'Полная'}</b> · Личка: <b>${notificationsEnabled ? 'Вкл' : 'Выкл'}</b>`,
+    '',
+    '<i>Все настройки и выбор пиксельных персонажей доступны на сайте по кнопке ниже.</i>',
   ].join('\n');
 }

@@ -318,7 +318,7 @@ export async function runDiagnostics(): Promise<DiagnosticsReport> {
   const scenes = getAsciiSceneInventory();
   checks.push({
     id: 'scenes',
-    label: 'ASCII-сцены',
+    label: 'Мини-сцены',
     status: scenes.totalScenes >= 30 ? 'ok' : 'warn',
     detail: `загружено сцен: ${scenes.totalScenes}`,
   });
@@ -371,7 +371,7 @@ export function renderStatusHtml(report: DiagnosticsReport): string {
 
   return `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>АЛЛО, РОУД! — статус бота</title>
+<title>АЛЛО, ПИДР! — статус бота</title>
 <style>
   :root{color-scheme:light dark;--bg:#fff;--fg:#111214;--card:#f5f5f3;--mut:#666;--ok:#1a7f37;--warn:#9a6700;--fail:#cf222e}
   @media (prefers-color-scheme:dark){:root{--bg:#111214;--fg:#f4f4f0;--card:#1a1b1f;--mut:#8b949e;--ok:#3fb950;--warn:#d29922;--fail:#f85149}}
@@ -387,7 +387,7 @@ export function renderStatusHtml(report: DiagnosticsReport): string {
   button,a.btn{font:inherit;padding:9px 14px;border-radius:8px;border:1px solid var(--mut);background:var(--card);color:var(--fg);cursor:pointer;text-decoration:none}
   .time{color:var(--mut);font-size:13px}
 </style></head><body><div class="wrap">
-<h1>АЛЛО, РОУД! — статус Telegram-бота</h1>
+<h1>АЛЛО, ПИДР! — статус Telegram-бота</h1>
 <div class="time">Проверено: ${esc(report.checkedAt)}</div>
 <div class="sum">${report.ok ? (warned ? '⚠️' : '✅') : '❌'} ${esc(summary)}</div>
 <ul>

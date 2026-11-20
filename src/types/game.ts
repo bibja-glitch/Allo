@@ -1,3 +1,5 @@
+import type { PixelCharacterId } from '../../lib/bot/pixelCharacters.js';
+
 export type EventStatus = 'pending' | 'confirmed' | 'disputed' | 'cancelled';
 
 export type EventType = 'missed_call' | 'callback';
@@ -16,6 +18,8 @@ export type AvatarId = 'photo_hero' | 'fox_orange' | 'frog_green' | 'cat_amber' 
 export interface Profile {
   id: string;
   display_name: string;
+  custom_name?: boolean;
+  pixel_character?: PixelCharacterId;
   avatar: AvatarId;
   telegram_id: string | null;
   telegram_username: string | null;
@@ -39,6 +43,7 @@ export interface Pair {
   recent_scenes?: string[] | null;
   round_started_at?: string | null;
   fast_animation?: boolean;
+  web_token?: string;
   created_at: string;
 }
 

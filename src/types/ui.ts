@@ -1,4 +1,7 @@
-export type ActiveTab = 'simulator' | 'scenes' | 'deploy';
+import type { PixelCharacterId } from '../../lib/bot/pixelCharacters';
+import type { CallEvent, GameStats, Pair, PlayerProgress } from './game';
+
+export type ActiveTab = 'simulator' | 'settings' | 'scenes' | 'deploy';
 
 export type AsciiSceneCategory =
   | 'duel'
@@ -81,6 +84,7 @@ export type SimPanelMode = 'menu' | 'score' | 'history' | 'stats' | 'settings';
 export interface SimPlayer {
   id: 'kirill' | 'denis';
   name: string;
+  pixelCharacter: PixelCharacterId;
   missed: number;
   callbacks: number;
 }
@@ -94,3 +98,15 @@ export interface SimMissEvent {
   status: 'animating' | 'pending' | 'confirmed' | 'disputed' | 'cancelled';
   createdAt: string;
 }
+
+export interface PairStateResponse {
+  ok: boolean;
+  error?: string;
+  pair?: Pair;
+  players?: PlayerProgress[];
+  events?: CallEvent[];
+  stats?: GameStats;
+  viewerId?: string;
+  viewerNotificationsEnabled?: boolean;
+}
+

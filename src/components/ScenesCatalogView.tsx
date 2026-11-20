@@ -41,7 +41,7 @@ export function ScenesCatalogView({ scenes, loading, onPlayScene }: ScenesCatalo
     <div className="space-y-5">
       <div className="flex flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="font-display text-lg font-bold text-zinc-950">Каталог ASCII-сцен</h2>
+          <h2 className="font-display text-lg font-bold text-zinc-950">Каталог мини-сцен</h2>
           <p className="mt-1 text-sm text-zinc-600">
             Симметричная сетка 32×11, чистые заголовки без визуального шума · {scenes.length} сцен в базе
           </p>

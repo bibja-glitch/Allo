@@ -22,12 +22,18 @@ import {
   getPairMembers,
   getUserPairId,
   joinPairByCode,
+  leavePair,
   recordPlayedScene,
   updateSettings,
 } from './storage.js';
 import {
   getBotConnectionByUserId,
+  getChatPanelMessageId,
+  getPendingUserInput,
   getUserById,
+  setChatPanelMessageId,
+  setPendingUserInput,
+  updateUserProfile,
   upsertTelegramUser,
 } from './users.js';
 
@@ -49,9 +55,16 @@ export interface BotStore {
     displayName: string;
     username: string | null;
   }): Promise<Profile>;
+  updateUserProfile(params: {
+    userId: string;
+    displayName?: string;
+    pixelCharacter?: string;
+  }): Promise<Profile | null>;
   getPairContextForUser(userId: string): Promise<PairContext>;
+  getPairContextById(pairId: string): Promise<PairContext>;
   createPair(userId: string, groupChatId?: string | null): Promise<Pair>;
   joinPairByCode(userId: string, code: string, groupChatId?: string | null): Promise<Pair>;
+  leavePair(userId: string): Promise<{ left: boolean; pair: Pair | null; partnerUserIds: string[] }>;
   bindGroupChat(pairId: string, groupChatId: string | null): Promise<void>;
   recordPlayedScene(pairId: string, sceneId: string): Promise<void>;
   createMissedCallEvent(ev: Omit<CallEvent, 'id'>): Promise<CallEvent>;
@@ -83,6 +96,10 @@ export interface BotStore {
     fastAnimation?: boolean;
   }): Promise<void>;
   findExpiredPendingAnimations(nowIso?: string): Promise<CallEvent[]>;
+  getChatPanelMessageId(chatId: string): Promise<number | null>;
+  setChatPanelMessageId(chatId: string, messageId: number | null): Promise<void>;
+  getPendingUserInput(userId: string): Promise<'name' | null>;
+  setPendingUserInput(userId: string, mode: 'name' | null): Promise<void>;
 }
 
 export class UpstashBotStore implements BotStore {
@@ -109,27 +126,24 @@ export class UpstashBotStore implements BotStore {
     return await upsertTelegramUser(params);
   }
 
-  async getPairContextForUser(userId: string): Promise<PairContext> {
-    const pairId = await getUserPairId(userId);
-    if (!pairId) {
-      const [profile, conn] = await Promise.all([
-        getUserById(userId),
-        getBotConnectionByUserId(userId),
-      ]);
-      return {
-        pair: null,
-        members: [],
-        profiles: profile ? [profile] : [],
-        events: [],
-        botConnections: conn ? [conn] : [],
-      };
-    }
+  async updateUserProfile(params: {
+    userId: string;
+    displayName?: string;
+    pixelCharacter?: string;
+  }): Promise<Profile | null> {
+    return await updateUserProfile(params);
+  }
 
+  async getPairContextById(pairId: string): Promise<PairContext> {
     const [pair, members, events] = await Promise.all([
       getPairById(pairId),
       getPairMembers(pairId),
       getEventsForPair(pairId),
     ]);
+
+    if (!pair) {
+      return { pair: null, members: [], profiles: [], events: [], botConnections: [] };
+    }
 
     const userIds = members.map((m: PairMember) => m.user_id);
     const [profiles, botConnections] = await Promise.all([
@@ -146,6 +160,25 @@ export class UpstashBotStore implements BotStore {
     };
   }
 
+  async getPairContextForUser(userId: string): Promise<PairContext> {
+    const pairId = await getUserPairId(userId);
+    if (!pairId) {
+      const [profile, conn] = await Promise.all([
+        getUserById(userId),
+        getBotConnectionByUserId(userId),
+      ]);
+      return {
+        pair: null,
+        members: [],
+        profiles: profile ? [profile] : [],
+        events: [],
+        botConnections: conn ? [conn] : [],
+      };
+    }
+
+    return await this.getPairContextById(pairId);
+  }
+
   async createPair(userId: string, groupChatId?: string | null): Promise<Pair> {
     return await createPair(userId, groupChatId);
   }
@@ -156,6 +189,10 @@ export class UpstashBotStore implements BotStore {
     groupChatId?: string | null
   ): Promise<Pair> {
     return await joinPairByCode(userId, code, groupChatId);
+  }
+
+  async leavePair(userId: string): Promise<{ left: boolean; pair: Pair | null; partnerUserIds: string[] }> {
+    return await leavePair(userId);
   }
 
   async bindGroupChat(pairId: string, groupChatId: string | null): Promise<void> {
@@ -208,6 +245,22 @@ export class UpstashBotStore implements BotStore {
 
   async findExpiredPendingAnimations(nowIso?: string): Promise<CallEvent[]> {
     return await findExpiredPendingAnimations(nowIso);
+  }
+
+  async getChatPanelMessageId(chatId: string): Promise<number | null> {
+    return await getChatPanelMessageId(chatId);
+  }
+
+  async setChatPanelMessageId(chatId: string, messageId: number | null): Promise<void> {
+    await setChatPanelMessageId(chatId, messageId);
+  }
+
+  async getPendingUserInput(userId: string): Promise<'name' | null> {
+    return await getPendingUserInput(userId);
+  }
+
+  async setPendingUserInput(userId: string, mode: 'name' | null): Promise<void> {
+    await setPendingUserInput(userId, mode);
   }
 }
 

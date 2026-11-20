@@ -2,32 +2,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { TelegramApiResponse } from './telegramApi.js';
 
-export const BOT_DISPLAY_NAME = 'АЛЛО, РОУД!';
+export const BOT_DISPLAY_NAME = 'АЛЛО, ПИДР!';
 
 export const BOT_SHORT_DESCRIPTION =
-  'АЛЛО, РОУД — минималистичная игра для двух друзей. Не взял трубку — получил +1 шаг к финалу.';
+  'АЛЛО, ПИДР — минималистичная игра для двух друзей. Не взял трубку — получил +1 шаг к финалу.';
 
 export const BOT_DESCRIPTION = [
-  'АЛЛО, РОУД — дуэль на внимательность для двух друзей.',
+  'АЛЛО, ПИДР — дуэль на внимательность для двух друзей.',
   '',
   '— Создайте пару и отправьте код другу',
   '— Если друг не поднял телефон — зафиксируйте пропуск',
-  '— В чат прилетит короткая ASCII-сцена и счётчик раунда',
+  '— В чат прилетит короткая текстовая анимация и счётчик раунда',
   '',
   'Кто первым наберёт лимит пропусков — получает главный титул.',
 ].join('\n');
 
 export const BOT_COMMANDS: Array<{ command: string; description: string }> = [
-  { command: 'start', description: 'Главное меню и создание пары' },
+  { command: 'start', description: 'Открыть панель дуэли' },
   { command: 'miss', description: 'Он не поднял трубку (+1 шаг)' },
+  { command: 'score', description: 'Счёт и пиксельные персонажи' },
   { command: 'callback', description: 'Отметить перезвон' },
-  { command: 'score', description: 'Текущий счёт раунда' },
-  { command: 'stats', description: 'Сводка дуэли за неделю' },
-  { command: 'history', description: 'Последние события' },
-  { command: 'scenes', description: 'Превью случайной ASCII-сцены' },
-  { command: 'settings', description: 'Настройки пары' },
-  { command: 'join', description: 'Войти в пару по коду' },
-  { command: 'menu', description: 'Показать меню' },
+  { command: 'name', description: 'Задать своё имя в игре' },
+  { command: 'settings', description: 'Настройки на сайте' },
+  { command: 'scenes', description: 'Превью случайной сцены' },
+  { command: 'leave', description: 'Выйти из текущей пары' },
 ];
 
 export const BOT_AVATAR_RELATIVE_PATH = 'src/assets/images/bot_avatar_minimal_1795174484247.jpg';

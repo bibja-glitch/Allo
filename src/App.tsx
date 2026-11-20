@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TopBar } from './components/TopBar';
 import { SimulatorView } from './components/SimulatorView';
+import { PairSettingsView } from './components/PairSettingsView';
 import { ScenesCatalogView } from './components/ScenesCatalogView';
 import { DeployStatusView } from './components/DeployStatusView';
 import type {
@@ -11,7 +12,27 @@ import type {
 } from './types/ui';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('simulator');
+  const [pairParams, setPairParams] = useState<{
+    pairId: string | null;
+    token: string | null;
+    viewerId: string | null;
+  }>(() => {
+    if (typeof window === 'undefined') {
+      return { pairId: null, token: null, viewerId: null };
+    }
+    const sp = new URLSearchParams(window.location.search);
+    return {
+      pairId: sp.get('pair'),
+      token: sp.get('token'),
+      viewerId: sp.get('u'),
+    };
+  });
+
+  const hasLivePairLink = Boolean(pairParams.pairId && pairParams.token);
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    hasLivePairLink ? 'settings' : 'simulator'
+  );
   const [scenes, setScenes] = useState<SceneSummary[]>([]);
   const [scenesLoading, setScenesLoading] = useState(true);
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -69,12 +90,15 @@ export default function App() {
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight text-zinc-950">
               {activeTab === 'simulator' && 'Симулятор дуэли'}
+              {activeTab === 'settings' && 'Настройки пары и персонажи'}
               {activeTab === 'scenes' && 'Сцены 32×11'}
               {activeTab === 'deploy' && 'Деплой и диагностика'}
             </h1>
             <p className="mt-0.5 text-sm text-zinc-600">
               {activeTab === 'simulator' &&
-                'Визуальный профиль бота, живое проигрывание ASCII-анимаций и чистые HTML-карточки.'}
+                'Пиксельная шкала счёта, выбор персонажей и живое проигрывание мини-сцен.'}
+              {activeTab === 'settings' &&
+                'Имена друзей, выбор пиксельных героев, правила лимита и очищенный чат Telegram.'}
               {activeTab === 'scenes' &&
                 'Полная коллекция из 34 сценариев без лишних эмодзи и визуального шума.'}
               {activeTab === 'deploy' &&
@@ -88,6 +112,15 @@ export default function App() {
 
         {activeTab === 'simulator' && (
           <SimulatorView scenes={scenes} requestedScene={requestedScene} />
+        )}
+        {activeTab === 'settings' && (
+          <PairSettingsView
+            pairId={pairParams.pairId}
+            pairToken={pairParams.token}
+            viewerId={pairParams.viewerId}
+            onOpenSimulator={() => setActiveTab('simulator')}
+            onPairLeft={() => setPairParams({ pairId: null, token: null, viewerId: null })}
+          />
         )}
         {activeTab === 'scenes' && (
           <ScenesCatalogView
@@ -103,3 +136,4 @@ export default function App() {
     </div>
   );
 }
+

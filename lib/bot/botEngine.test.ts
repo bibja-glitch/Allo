@@ -25,6 +25,7 @@ import {
   syncBotVisualProfileOnDeploy,
 } from './botProfile.js';
 import { LocalBotStore } from './botStore.js';
+import { handleGetPairState, handleLeavePair, handleUpdatePairSettings } from './httpHandlers.js';
 import type { InlineKeyboardMarkup } from './messages.js';
 
 interface TransportCall {
@@ -601,4 +602,255 @@ test('Bot 7. Play-on-Demand in DM mode: holds animation as unopened envelope unt
   assert.equal(restoredCard?.replyMarkup?.inline_keyboard[0][0].text, 'Признаю');
   assert.equal(restoredCard?.replyMarkup?.inline_keyboard[1][0].text, 'Повторить сцену');
 });
+
+test('Bot 8. Zero-clutter auto-cleanup, custom /name preservation, slim 4-button menu URL, and web pair API', async () => {
+  const store = new LocalBotStore(null);
+  const { calls, transport, sleep } = createMockTransport();
+  const deps = { store, transport, frameDelayMs: 10, finalFrameHoldMs: 10, sleep };
+
+  // User 2 has an ugly Telegram name "..."
+  const u1 = { id: 801, first_name: 'JB' };
+  const u2 = { id: 802, first_name: '...' };
+
+  await processTelegramUpdate(
+    { update_id: 8001, message: { message_id: 10, from: u1, chat: { id: 801, type: 'private' }, text: '/start' } },
+    deps
+  );
+  // Incoming /start command is best-effort deleted
+  assert.ok(calls.some((c) => c.type === 'deleteMessage' && c.messageId === 10));
+
+  const createBtnChatMsgId = calls.find((c) => c.type === 'sendMessage')?.messageId as number;
+  await processTelegramUpdate(
+    {
+      update_id: 8002,
+      callback_query: {
+        id: 'cb-8-create',
+        from: u1,
+        data: 'pair:create',
+        message: { message_id: createBtnChatMsgId, chat: { id: 801, type: 'private' } },
+      },
+    },
+    deps
+  );
+  const inviteCode = calls.at(-1)!.text!.match(/ALLO-[A-F0-9]+/)![0];
+
+  await processTelegramUpdate(
+    { update_id: 8003, message: { message_id: 20, from: u2, chat: { id: 802, type: 'private' }, text: `/join ${inviteCode}` } },
+    deps
+  );
+
+  // User 2 taps Задать имя / sends /name without argument, then replies with "Макс"
+  calls.length = 0;
+  await processTelegramUpdate(
+    { update_id: 8004, message: { message_id: 21, from: u2, chat: { id: 802, type: 'private' }, text: '/name' } },
+    deps
+  );
+  const namePromptMsgId = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('ИМЯ В ИГРЕ'))?.messageId;
+  assert.ok(namePromptMsgId, 'Should send custom name prompt');
+
+  calls.length = 0;
+  await processTelegramUpdate(
+    { update_id: 8005, message: { message_id: 22, from: u2, chat: { id: 802, type: 'private' }, text: 'Макс' } },
+    deps
+  );
+  // Both user text message 22 and stale prompt panel must be deleted cleanly
+  assert.ok(calls.some((c) => c.type === 'deleteMessage' && c.messageId === 22));
+  assert.ok(calls.some((c) => c.type === 'deleteMessage' && c.messageId === namePromptMsgId));
+
+  const menuCall = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('АЛЛО, ПИДР'));
+  assert.ok(menuCall);
+  assert.match(menuCall.text!, /Макс/);
+  assert.equal(menuCall.replyMarkup?.inline_keyboard.length, 2, 'Main menu must have max 2 rows');
+  const row2 = menuCall.replyMarkup!.inline_keyboard[1];
+  assert.equal(row2.length, 3);
+  assert.equal(row2[2].text, 'Настройки ↗');
+  assert.ok(
+    row2[2].url?.startsWith('https://allo-omega-rust.vercel.app/?pair='),
+    `Expected Vercel settings URL, got ${row2[2].url}`
+  );
+
+  // Verify subsequent Telegram webhook from u2 ("...") does NOT overwrite custom name "Макс"
+  calls.length = 0;
+  await processTelegramUpdate(
+    { update_id: 8006, message: { message_id: 23, from: u2, chat: { id: 802, type: 'private' }, text: '/score' } },
+    deps
+  );
+  const scoreMsg = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('СЧЁТ РАУНДА'));
+  assert.ok(scoreMsg);
+  assert.match(scoreMsg.text!, /Макс/);
+  assert.doesNotMatch(scoreMsg.text!, /\.\.\. \(вы\)/);
+
+  // Verify Web API /api/pair/state & /api/pair/settings
+  const parsedUrl = new URL(row2[2].url!);
+  const pairId = parsedUrl.searchParams.get('pair')!;
+  const token = parsedUrl.searchParams.get('token')!;
+  const viewerId = parsedUrl.searchParams.get('u')!;
+
+  const badState = await handleGetPairState({ pair: pairId, token: 'wrong-token' }, { store });
+  assert.equal(badState.status, 403);
+
+  const okState = await handleGetPairState({ pair: pairId, token, u: viewerId }, { store });
+  assert.equal(okState.status, 200);
+  const playersList = okState.body.players as Array<{ userId: string; profile: { display_name: string } }>;
+  assert.equal(playersList.length, 2);
+
+  const updateRes = await handleUpdatePairSettings(
+    {
+      pairId,
+      token,
+      viewerId,
+      players: [
+        { userId: playersList[0].userId, displayName: 'Женя', pixelCharacter: 'ninja' },
+        { userId: playersList[1].userId, displayName: 'Максим', pixelCharacter: 'robot' },
+      ],
+      finishThreshold: 15,
+      cooldownSeconds: 30,
+      fastAnimation: true,
+    },
+    { store }
+  );
+  assert.equal(updateRes.status, 200);
+  const updatedPlayers = updateRes.body.players as Array<{
+    profile: { display_name: string; pixel_character?: string };
+  }>;
+  assert.equal(updatedPlayers[0].profile.display_name, 'Женя');
+  assert.equal(updatedPlayers[0].profile.pixel_character, 'ninja');
+  assert.equal(updatedPlayers[1].profile.display_name, 'Максим');
+  assert.equal(updatedPlayers[1].profile.pixel_character, 'robot');
+});
+
+test('Bot 9. Leaving pair works in waiting state, active Telegram (/leave + settings button), and web API', async () => {
+  const store = new LocalBotStore(null);
+  const { calls, transport, sleep } = createMockTransport();
+  const deps = { store, transport, frameDelayMs: 10, finalFrameHoldMs: 10, sleep };
+
+  const u1 = { id: 9901, first_name: 'Саша' };
+  const u2 = { id: 9902, first_name: 'Дима' };
+  const u3 = { id: 9903, first_name: 'Лёша' };
+
+  // 1) Waiting state: u1 creates a pair then cancels waiting code with pair:leave_confirm
+  await processTelegramUpdate(
+    { update_id: 99001, message: { message_id: 1, from: u1, chat: { id: 9901, type: 'private' }, text: '/start' } },
+    deps
+  );
+  const startMsgId = calls.find((c) => c.type === 'sendMessage')?.messageId as number;
+  assert.ok(startMsgId);
+
+  await processTelegramUpdate(
+    {
+      update_id: 99002,
+      callback_query: {
+        id: 'cb-9-create',
+        from: u1,
+        data: 'pair:create',
+        message: { message_id: startMsgId, chat: { id: 9901, type: 'private' } },
+      },
+    },
+    deps
+  );
+  assert.equal(calls.at(-1)?.replyMarkup?.inline_keyboard[1][0].callback_data, 'pair:leave_confirm');
+
+  await processTelegramUpdate(
+    {
+      update_id: 99003,
+      callback_query: {
+        id: 'cb-9-cancel-wait',
+        from: u1,
+        data: 'pair:leave_confirm',
+        message: { message_id: startMsgId, chat: { id: 9901, type: 'private' } },
+      },
+    },
+    deps
+  );
+  assert.match(calls.at(-1)?.text || '', /Вы вышли из пары/);
+  assert.equal(calls.at(-1)?.replyMarkup?.inline_keyboard[0][0].callback_data, 'pair:create');
+
+  // 2) u1 can now join a new pair created by u2, then leave via /leave -> pair:leave_confirm
+  await processTelegramUpdate(
+    { update_id: 99004, message: { message_id: 2, from: u2, chat: { id: 9902, type: 'private' }, text: '/start' } },
+    deps
+  );
+  const u2StartMsgId = calls.filter((c) => c.type === 'sendMessage').at(-1)?.messageId as number;
+  await processTelegramUpdate(
+    {
+      update_id: 99005,
+      callback_query: {
+        id: 'cb-9-u2-create',
+        from: u2,
+        data: 'pair:create',
+        message: { message_id: u2StartMsgId, chat: { id: 9902, type: 'private' } },
+      },
+    },
+    deps
+  );
+  const inviteCode = calls.at(-1)!.text!.match(/ALLO-[A-F0-9]+/)![0];
+
+  await processTelegramUpdate(
+    { update_id: 99006, message: { message_id: 3, from: u1, chat: { id: 9901, type: 'private' }, text: `/join ${inviteCode}` } },
+    deps
+  );
+
+  // /leave command shows inline confirmation prompt
+  calls.length = 0;
+  await processTelegramUpdate(
+    { update_id: 99007, message: { message_id: 4, from: u1, chat: { id: 9901, type: 'private' }, text: '/leave' } },
+    deps
+  );
+  const leavePromptMsg = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('ВЫЙТИ ИЗ ПАРЫ?'));
+  assert.ok(leavePromptMsg, '/leave must show confirmation prompt');
+  assert.equal(leavePromptMsg.replyMarkup?.inline_keyboard[0][0].callback_data, 'pair:leave_confirm');
+
+  // Confirm leave: both u1 and u2 become unpaired and receive notification
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 99008,
+      callback_query: {
+        id: 'cb-9-leave-confirm',
+        from: u1,
+        data: 'pair:leave_confirm',
+        message: { message_id: Number(leavePromptMsg.messageId), chat: { id: 9901, type: 'private' } },
+      },
+    },
+    deps
+  );
+  assert.ok(calls.some((c) => String(c.chatId) === '9901' && c.text?.includes('Вы вышли из пары')));
+  assert.ok(calls.some((c) => String(c.chatId) === '9902' && c.text?.includes('вышел(а) из пары')));
+
+  // 3) u2 and u3 can pair immediately, then leave via Web API handleLeavePair
+  await processTelegramUpdate(
+    {
+      update_id: 99009,
+      callback_query: {
+        id: 'cb-9-u2-recreate',
+        from: u2,
+        data: 'pair:create',
+        message: { message_id: u2StartMsgId, chat: { id: 9902, type: 'private' } },
+      },
+    },
+    deps
+  );
+  const invite2 = calls.at(-1)!.text!.match(/ALLO-[A-F0-9]+/)![0];
+  await processTelegramUpdate(
+    { update_id: 99010, message: { message_id: 5, from: u3, chat: { id: 9903, type: 'private' }, text: `/join ${invite2}` } },
+    deps
+  );
+  const activeMenu = calls.find((c) => c.type === 'sendMessage' && c.replyMarkup?.inline_keyboard[1]?.[2]?.url);
+  const url = new URL(activeMenu!.replyMarkup!.inline_keyboard[1][2].url!);
+  const pairId = url.searchParams.get('pair')!;
+  const token = url.searchParams.get('token')!;
+  const viewerId = url.searchParams.get('u')!;
+
+  const badLeave = await handleLeavePair({ pairId, token: 'invalid', viewerId }, { store });
+  assert.equal(badLeave.status, 403);
+
+  const okLeave = await handleLeavePair({ pairId, token, viewerId }, { store });
+  assert.equal(okLeave.status, 200);
+  assert.equal(okLeave.body.left, true);
+
+  const afterState = await handleGetPairState({ pair: pairId, token }, { store });
+  assert.equal(afterState.status, 404);
+});
+
+
 

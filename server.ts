@@ -6,10 +6,13 @@ import fs from 'node:fs';
 import {
   handleBotHealth,
   handleCleanupExpiredAnimations,
+  handleGetPairState,
+  handleLeavePair,
   handleScenesCatalog,
   handleSetupWebhook,
   handleStatusPage,
   handleTelegramBotWebhook,
+  handleUpdatePairSettings,
 } from './lib/bot/httpHandlers.js';
 
 async function startServer() {
@@ -44,6 +47,36 @@ async function startServer() {
     } catch (err) {
       console.error('Scenes catalog failed:', err);
       res.status(500).json({ ok: false, error: 'Failed to load scenes' });
+    }
+  });
+
+  app.get('/api/pair/state', async (req, res) => {
+    try {
+      const out = await handleGetPairState(req.query as Record<string, unknown>);
+      res.status(out.status).json(out.body);
+    } catch (err) {
+      console.error('Pair state fetch failed:', err);
+      res.status(500).json({ ok: false, error: 'Failed to load pair state' });
+    }
+  });
+
+  app.post('/api/pair/settings', async (req, res) => {
+    try {
+      const out = await handleUpdatePairSettings(req.body);
+      res.status(out.status).json(out.body);
+    } catch (err) {
+      console.error('Pair settings update failed:', err);
+      res.status(500).json({ ok: false, error: 'Failed to update pair settings' });
+    }
+  });
+
+  app.post('/api/pair/leave', async (req, res) => {
+    try {
+      const out = await handleLeavePair(req.body);
+      res.status(out.status).json(out.body);
+    } catch (err) {
+      console.error('Leave pair failed:', err);
+      res.status(500).json({ ok: false, error: 'Failed to leave pair' });
     }
   });
 
@@ -84,7 +117,7 @@ async function startServer() {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`АЛЛО, РОУД! server listening on http://localhost:${PORT}`);
+    console.log(`АЛЛО, ПИДР! server listening on http://localhost:${PORT}`);
   });
 }
 

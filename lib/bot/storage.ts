@@ -27,11 +27,20 @@ export async function getUserPairId(userId: string): Promise<string | null> {
 
 export async function getPairById(pairId: string): Promise<Pair | null> {
   if (!isUpstashConfigured()) {
-    return localDb.pairs.get(pairId) || null;
+    const p = localDb.pairs.get(pairId) || null;
+    if (p && !p.web_token) {
+      p.web_token = crypto.randomBytes(12).toString('hex');
+    }
+    return p;
   }
   const redis = getRedisClient();
   const raw = await hgetallHash(redis, `pairs:${pairId}`);
   if (!raw || !raw.id) return null;
+  let webToken = raw.web_token || '';
+  if (!webToken) {
+    webToken = crypto.randomBytes(12).toString('hex');
+    await redis.hset(`pairs:${pairId}`, { web_token: webToken });
+  }
   return {
     id: raw.id,
     invitation_code: raw.invitation_code,
@@ -44,6 +53,7 @@ export async function getPairById(pairId: string): Promise<Pair | null> {
     recent_scenes: raw.recent_scenes ? JSON.parse(raw.recent_scenes) : [],
     round_started_at: raw.round_started_at || new Date().toISOString(),
     fast_animation: raw.fast_animation === 'true',
+    web_token: webToken,
     created_at: raw.created_at || new Date().toISOString(),
   };
 }
@@ -66,6 +76,7 @@ export async function createPair(userId: string, groupChatId?: string | null): P
 
   const code = `ALLO-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
   const pairId = crypto.randomUUID();
+  const webToken = crypto.randomBytes(12).toString('hex');
   const nowIso = new Date().toISOString();
 
   const pair: Pair = {
@@ -80,6 +91,7 @@ export async function createPair(userId: string, groupChatId?: string | null): P
     recent_scenes: [],
     round_started_at: nowIso,
     fast_animation: false,
+    web_token: webToken,
     created_at: nowIso,
   };
 
@@ -112,6 +124,7 @@ export async function createPair(userId: string, groupChatId?: string | null): P
     recent_scenes: JSON.stringify([]),
     round_started_at: pair.round_started_at || nowIso,
     fast_animation: 'false',
+    web_token: webToken,
     created_at: pair.created_at,
   });
 
@@ -225,6 +238,43 @@ async function abandonSoloPair(userId: string, pairId: string, invitationCode: s
   await redis.del(`pair_members:${pairId}`);
   if (invitationCode) await redis.del(`invitation:${invitationCode}`);
   await redis.del(`user_pair:${userId}`);
+}
+
+export async function leavePair(userId: string): Promise<{
+  left: boolean;
+  pair: Pair | null;
+  partnerUserIds: string[];
+}> {
+  const pairId = await getUserPairId(userId);
+  if (!pairId) {
+    return { left: false, pair: null, partnerUserIds: [] };
+  }
+
+  const [pair, members] = await Promise.all([getPairById(pairId), getPairMembers(pairId)]);
+  const memberIds = Array.from(new Set([userId, ...members.map((m) => m.user_id)]));
+  const partnerUserIds = members.map((m) => m.user_id).filter((id) => id !== userId);
+
+  if (!isUpstashConfigured()) {
+    localDb.pairs.delete(pairId);
+    localDb.members.delete(pairId);
+    if (pair?.invitation_code) {
+      localDb.invites.delete(pair.invitation_code);
+    }
+    for (const uid of memberIds) {
+      localDb.userPair.delete(uid);
+    }
+    return { left: true, pair, partnerUserIds };
+  }
+
+  const redis = getRedisClient();
+  await Promise.all([
+    redis.del(`pairs:${pairId}`),
+    redis.del(`pair_members:${pairId}`),
+    ...(pair?.invitation_code ? [redis.del(`invitation:${pair.invitation_code}`)] : []),
+    ...memberIds.map((uid) => redis.del(`user_pair:${uid}`)),
+  ]);
+
+  return { left: true, pair, partnerUserIds };
 }
 
 export async function bindGroupChat(pairId: string, groupChatId: string | null): Promise<void> {

@@ -21,6 +21,7 @@ import {
   buildEventReactionKeyboard,
   buildGameOverKeyboard,
   buildMainMenuKeyboard,
+  buildPairSettingsUrl,
   buildPendingEnvelopeKeyboard,
   buildSettingsKeyboard,
   buildUnpairedKeyboard,
@@ -184,14 +185,29 @@ export async function processTelegramUpdate(
   }
 }
 
+async function bestEffortDeleteMessage(
+  transport: TelegramTransport,
+  chatId: string,
+  messageId?: number | null
+): Promise<void> {
+  if (!messageId) return;
+  try {
+    await transport.deleteMessage(chatId, messageId);
+  } catch {
+    // Telegram may deny deletion in some chats — silently ignore
+  }
+}
+
 async function editOrSendPanel(params: {
+  store?: BotStore;
   transport: TelegramTransport;
   chatId: string;
   messageId?: number;
   text: string;
   replyMarkup?: InlineKeyboardMarkup;
+  rememberPanel?: boolean;
 }) {
-  const { transport, chatId, messageId, text, replyMarkup } = params;
+  const { store, transport, chatId, messageId, text, replyMarkup, rememberPanel = true } = params;
   if (messageId) {
     const edited = await transport.editMessageText({
       chatId,
@@ -201,15 +217,30 @@ async function editOrSendPanel(params: {
       replyMarkup,
     });
     if (edited.ok || (edited.description || '').toLowerCase().includes('message is not modified')) {
+      if (store && rememberPanel) {
+        await store.setChatPanelMessageId(chatId, messageId);
+      }
       return edited;
     }
   }
-  return transport.sendMessage({
+
+  const prevPanelId = store && rememberPanel ? await store.getChatPanelMessageId(chatId) : null;
+  const sent = await transport.sendMessage({
     chatId,
     text,
     parseMode: 'HTML',
     replyMarkup,
   });
+
+  if (store && rememberPanel && sent.ok && sent.result?.message_id) {
+    const nextId = sent.result.message_id;
+    await store.setChatPanelMessageId(chatId, nextId);
+    if (prevPanelId && prevPanelId !== nextId) {
+      await bestEffortDeleteMessage(transport, chatId, prevPanelId);
+    }
+  }
+
+  return sent;
 }
 
 async function processClaimedUpdate(
@@ -250,6 +281,7 @@ async function processClaimedUpdate(
       const pair = await store.createPair(profile.id, chat && isGroupChat(chat) ? chatId : null);
       await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: 'Пара создана' });
       await editOrSendPanel({
+        store,
         transport,
         chatId,
         messageId: cb.message?.message_id,
@@ -258,29 +290,159 @@ async function processClaimedUpdate(
           '',
           `Код приглашения: <code>${escapeHtml(pair.invitation_code)}</code>`,
           '',
-          'Нажмите на код, чтобы скопировать, и отправьте другу.',
-          `Друг должен отправить боту: <code>/join ${escapeHtml(pair.invitation_code)}</code>`,
+          'Отправьте код другу — он должен ввести:',
+          `<code>/join ${escapeHtml(pair.invitation_code)}</code>`,
         ].join('\n'),
         replyMarkup: {
-          inline_keyboard: [[{ text: 'Ввести код вместо создания', callback_data: 'pair:join_prompt' }]],
+          inline_keyboard: [
+            [{ text: 'Ввести код', callback_data: 'pair:join_prompt' }],
+            [{ text: 'Отменить код', callback_data: 'pair:leave_confirm' }],
+          ],
         },
       });
       return { ok: true, action: 'pair:create' };
     }
 
+    if (data === 'pair:leave_prompt') {
+      await transport.answerCallbackQuery({ callbackQueryId: cb.id });
+      const ctx = await store.getPairContextForUser(profile.id);
+      if (!ctx.pair) {
+        await sendNeedsPairMessage(store, transport, chatId, undefined, cb.message?.message_id);
+        return { ok: true, action: 'pair:leave_prompt:no_pair' };
+      }
+      await editOrSendPanel({
+        store,
+        transport,
+        chatId,
+        messageId: cb.message?.message_id,
+        text: [
+          '<b>ВЫЙТИ ИЗ ПАРЫ?</b>',
+          '',
+          ctx.pair.status === 'active'
+            ? 'Текущий раунд и связка завершатся для обоих друзей. После выхода можно сразу создать новую пару или ввести другой код.'
+            : `Код приглашения <code>${escapeHtml(ctx.pair.invitation_code)}</code> будет отменён.`,
+        ].join('\n'),
+        replyMarkup: {
+          inline_keyboard: [
+            [
+              { text: 'Да, выйти', callback_data: 'pair:leave_confirm' },
+              { text: 'Отмена', callback_data: 'act:name_cancel' },
+            ],
+          ],
+        },
+      });
+      return { ok: true, action: 'pair:leave_prompt' };
+    }
+
+    if (data === 'pair:leave_confirm') {
+      const ctx = await store.getPairContextForUser(profile.id);
+      const res = await store.leavePair(profile.id);
+      await store.setPendingUserInput(profile.id, null);
+      await transport.answerCallbackQuery({
+        callbackQueryId: cb.id,
+        text: res.left ? 'Вы вышли из пары' : 'Пара не найдена',
+      });
+
+      await editOrSendPanel({
+        store,
+        transport,
+        chatId,
+        messageId: cb.message?.message_id,
+        text: [
+          '<b>Вы вышли из пары.</b>',
+          '',
+          'Теперь можно создать новую пару или ввести код от друга.',
+        ].join('\n'),
+        replyMarkup: buildUnpairedKeyboard(),
+      });
+
+      if (res.left && ctx.pair) {
+        for (const partnerId of res.partnerUserIds) {
+          const partnerConn = ctx.botConnections.find((b) => b.user_id === partnerId);
+          if (partnerConn?.telegram_chat_id && partnerConn.telegram_chat_id !== chatId) {
+            await editOrSendPanel({
+              store,
+              transport,
+              chatId: partnerConn.telegram_chat_id,
+              text: [
+                `<b>${escapeHtml(profile.display_name)}</b> вышел(а) из пары.`,
+                '',
+                'Связка завершена — можно создать новую пару или ввести код от друга.',
+              ].join('\n'),
+              replyMarkup: buildUnpairedKeyboard(),
+            });
+          }
+        }
+        if (ctx.pair.group_chat_id && ctx.pair.group_chat_id !== chatId) {
+          await editOrSendPanel({
+            store,
+            transport,
+            chatId: ctx.pair.group_chat_id,
+            text: [
+              `<b>${escapeHtml(profile.display_name)}</b> вышел(а) из пары.`,
+              '',
+              'Связка завершена — создайте новую пару или введите код.',
+            ].join('\n'),
+            replyMarkup: buildUnpairedKeyboard(),
+          });
+        }
+      }
+
+      return { ok: true, action: 'pair:leave_confirm' };
+    }
+
     if (data === 'pair:join_prompt') {
       await transport.answerCallbackQuery({ callbackQueryId: cb.id });
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId,
-        parseMode: 'HTML',
+        messageId: cb.message?.message_id,
         text: [
           '<b>ВХОД В ПАРУ</b>',
           '',
-          'Отправьте код приглашения сообщением, например:',
-          '<code>/join ALLO-7F3A</code> или просто <code>ALLO-7F3A</code>',
+          'Отправьте код приглашения сообщением:',
+          '<code>ALLO-7F3A</code>',
         ].join('\n'),
+        replyMarkup: {
+          inline_keyboard: [[{ text: 'Назад', callback_data: 'act:name_cancel' }]],
+        },
       });
       return { ok: true, action: 'pair:join_prompt' };
+    }
+
+    if (data === 'act:name_prompt') {
+      await store.setPendingUserInput(profile.id, 'name');
+      await transport.answerCallbackQuery({ callbackQueryId: cb.id });
+      await editOrSendPanel({
+        store,
+        transport,
+        chatId,
+        messageId: cb.message?.message_id,
+        text: [
+          '<b>ИМЯ В ИГРЕ</b>',
+          `Сейчас: <b>${escapeHtml(profile.display_name)}</b>`,
+          '',
+          'Отправьте новое имя следующим сообщением (до 24 символов).',
+          'Это сообщение автоматически заменит старое.',
+        ].join('\n'),
+        replyMarkup: {
+          inline_keyboard: [[{ text: 'Отмена', callback_data: 'act:name_cancel' }]],
+        },
+      });
+      return { ok: true, action: 'act:name_prompt' };
+    }
+
+    if (data === 'act:name_cancel') {
+      await store.setPendingUserInput(profile.id, null);
+      await transport.answerCallbackQuery({ callbackQueryId: cb.id });
+      const ctx = await store.getPairContextForUser(profile.id);
+      if (ctx.pair && ctx.pair.status === 'active') {
+        await sendMainMenu(store, transport, chatId, profile.id, ctx, cb.message?.message_id);
+      } else {
+        await sendNeedsPairMessage(store, transport, chatId, ctx.pair?.invitation_code, cb.message?.message_id);
+      }
+      return { ok: true, action: 'act:name_cancel' };
     }
 
     if (data === 'act:miss') {
@@ -334,20 +496,20 @@ async function processClaimedUpdate(
       await transport.answerCallbackQuery({ callbackQueryId: cb.id });
       const ctx = await store.getPairContextForUser(profile.id);
       if (!ctx.pair || ctx.pair.status !== 'active') {
-        await sendNeedsPairMessage(transport, chatId, ctx.pair?.invitation_code);
+        await sendNeedsPairMessage(store, transport, chatId, ctx.pair?.invitation_code, cb.message?.message_id);
         return { ok: true, action: data };
       }
       const msgId = cb.message?.message_id;
       if (data === 'act:menu') {
-        await sendMainMenu(transport, chatId, profile.id, ctx, msgId);
+        await sendMainMenu(store, transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:score') {
-        await sendScoreView(transport, chatId, profile.id, ctx, msgId);
+        await sendScoreView(store, transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:history') {
-        await sendHistoryView(transport, chatId, ctx, msgId);
+        await sendHistoryView(store, transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:stats') {
-        await sendStatsView(transport, chatId, ctx, msgId);
+        await sendStatsView(store, transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:settings') {
-        await sendSettingsView(transport, chatId, profile.id, ctx, msgId);
+        await sendSettingsView(store, transport, chatId, profile.id, ctx, msgId);
       }
       return { ok: true, action: data };
     }
@@ -446,7 +608,7 @@ async function processClaimedUpdate(
           text: 'Новый раунд начат',
         });
         const freshCtx = await store.getPairContextForUser(profile.id);
-        await sendMainMenu(transport, chatId, profile.id, freshCtx, cb.message?.message_id);
+        await sendMainMenu(store, transport, chatId, profile.id, freshCtx, cb.message?.message_id);
         return { ok: true, action: 'set:reset' };
       }
 
@@ -464,6 +626,7 @@ async function processClaimedUpdate(
           replyMarkup: buildSettingsKeyboard({
             pair: freshCtx.pair,
             notificationsEnabled: conn?.notification_enabled ?? true,
+            settingsUrl: buildPairSettingsUrl(freshCtx.pair, profile.id),
           }),
         });
       }
@@ -497,6 +660,65 @@ async function processClaimedUpdate(
 
   let ctx = await store.getPairContextForUser(profile.id);
 
+  // Best-effort cleanup of incoming slash commands so chat stays spotless
+  if (commandToken.startsWith('/')) {
+    await bestEffortDeleteMessage(transport, chatId, msg.message_id);
+  }
+
+  // Handle interactive /name response when waiting for user text input
+  if (!commandToken.startsWith('/')) {
+    const pendingMode = await store.getPendingUserInput(profile.id);
+    if (pendingMode === 'name') {
+      const cleanName = rawText.replace(/\s+/g, ' ').trim().slice(0, 24);
+      await store.setPendingUserInput(profile.id, null);
+      await bestEffortDeleteMessage(transport, chatId, msg.message_id);
+      if (cleanName.length > 0) {
+        await store.updateUserProfile({ userId: profile.id, displayName: cleanName });
+        ctx = await store.getPairContextForUser(profile.id);
+      }
+      if (ctx.pair && ctx.pair.status === 'active') {
+        await sendMainMenu(store, transport, chatId, profile.id, ctx);
+      } else {
+        await sendNeedsPairMessage(store, transport, chatId, ctx.pair?.invitation_code);
+      }
+      return { ok: true, action: 'name:updated' };
+    }
+  }
+
+  if (commandToken === '/name') {
+    if (arg) {
+      const cleanName = arg.replace(/\s+/g, ' ').trim().slice(0, 24);
+      await store.setPendingUserInput(profile.id, null);
+      if (cleanName.length > 0) {
+        await store.updateUserProfile({ userId: profile.id, displayName: cleanName });
+        ctx = await store.getPairContextForUser(profile.id);
+      }
+      if (ctx.pair && ctx.pair.status === 'active') {
+        await sendMainMenu(store, transport, chatId, profile.id, ctx);
+      } else {
+        await sendNeedsPairMessage(store, transport, chatId, ctx.pair?.invitation_code);
+      }
+      return { ok: true, action: '/name:updated' };
+    }
+
+    await store.setPendingUserInput(profile.id, 'name');
+    await editOrSendPanel({
+      store,
+      transport,
+      chatId,
+      text: [
+        '<b>ИМЯ В ИГРЕ</b>',
+        `Сейчас: <b>${escapeHtml(profile.display_name)}</b>`,
+        '',
+        'Отправьте новое имя следующим сообщением (до 24 символов).',
+      ].join('\n'),
+      replyMarkup: {
+        inline_keyboard: [[{ text: 'Отмена', callback_data: 'act:name_cancel' }]],
+      },
+    });
+    return { ok: true, action: '/name:prompt' };
+  }
+
   if (
     inGroup &&
     ctx.pair &&
@@ -512,27 +734,28 @@ async function processClaimedUpdate(
       return await handleJoinFlow(store, transport, profile.id, arg, chatId, inGroup ? chatId : null);
     }
     if (!ctx.pair) {
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId,
-        parseMode: 'HTML',
         text: [
-          `<b>АЛЛО, РОУД</b>`,
-          `<i>Привет, ${escapeHtml(profile.display_name)}.</i>`,
+          `<b>АЛЛО, ПИДР</b>`,
+          `<i>Игрок: ${escapeHtml(profile.display_name)}</i>`,
           '',
-          'Минималистичная игра для двух друзей:',
+          'Минималистичная дуэль для двух друзей:',
           '1. Свяжите пару по коду приглашения',
-          '2. Если друг не берёт трубку — фиксируйте пропуск',
-          '3. Смотрите короткую ASCII-сцену и следите за счётом',
+          '2. Фиксируйте пропуски — в чат прилетает короткая анимация',
+          '3. Имя и пиксельных персонажей настройте здесь или на сайте',
         ].join('\n'),
         replyMarkup: buildUnpairedKeyboard(),
       });
       return { ok: true, action: '/start:unpaired' };
     }
     if (ctx.pair.status !== 'active') {
-      await sendNeedsPairMessage(transport, chatId, ctx.pair.invitation_code);
+      await sendNeedsPairMessage(store, transport, chatId, ctx.pair.invitation_code);
       return { ok: true, action: '/start:waiting' };
     }
-    await sendMainMenu(transport, chatId, profile.id, ctx);
+    await sendMainMenu(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/start:active' };
   }
 
@@ -542,9 +765,10 @@ async function processClaimedUpdate(
   ) {
     const code = commandToken === '/join' ? arg : rawText;
     if (!code) {
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId,
-        parseMode: 'HTML',
         text: 'Укажите код после команды: <code>/join ALLO-7F3A</code>',
       });
       return { ok: true, action: '/join:missing_code' };
@@ -554,23 +778,25 @@ async function processClaimedUpdate(
 
   if (commandToken === '/bind') {
     if (!ctx.pair) {
-      await sendNeedsPairMessage(transport, chatId);
+      await sendNeedsPairMessage(store, transport, chatId);
       return { ok: true, action: '/bind:no_pair' };
     }
     if (!inGroup) {
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId,
-        parseMode: 'HTML',
-        text: 'Добавьте бота в общий чат с другом и отправьте там <code>/bind</code> — сцены начнут выходить в группу.',
+        text: 'Добавьте бота в общий чат с другом и отправьте там <code>/bind</code>.',
       });
       return { ok: true, action: '/bind:not_group' };
     }
     await store.bindGroupChat(ctx.pair.id, chatId);
-    await transport.sendMessage({
+    await editOrSendPanel({
+      store,
+      transport,
       chatId,
-      parseMode: 'HTML',
-      text: '<b>Общий чат привязан.</b>\nТеперь ASCII-сцены и счёт раунда будут появляться здесь.',
-      replyMarkup: buildMainMenuKeyboard(),
+      text: '<b>Общий чат привязан.</b>\nСцены и счёт раунда теперь выходят здесь.',
+      replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, profile.id)),
     });
     return { ok: true, action: '/bind:ok' };
   }
@@ -578,24 +804,53 @@ async function processClaimedUpdate(
   if (commandToken === '/unbindgroup') {
     if (ctx.pair) {
       await store.bindGroupChat(ctx.pair.id, null);
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId,
-        parseMode: 'HTML',
         text: 'Общий чат отвязан. Уведомления переведены в личные сообщения.',
       });
     }
     return { ok: true, action: '/unbindgroup' };
   }
 
+  if (commandToken === '/leave') {
+    if (!ctx.pair) {
+      await sendNeedsPairMessage(store, transport, chatId);
+      return { ok: true, action: '/leave:no_pair' };
+    }
+    await editOrSendPanel({
+      store,
+      transport,
+      chatId,
+      text: [
+        '<b>ВЫЙТИ ИЗ ПАРЫ?</b>',
+        '',
+        ctx.pair.status === 'active'
+          ? 'Текущий раунд и связка завершатся для обоих друзей. После выхода можно сразу создать новую пару или ввести другой код.'
+          : `Код приглашения <code>${escapeHtml(ctx.pair.invitation_code)}</code> будет отменён.`,
+      ].join('\n'),
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: 'Да, выйти', callback_data: 'pair:leave_confirm' },
+            { text: 'Отмена', callback_data: 'act:name_cancel' },
+          ],
+        ],
+      },
+    });
+    return { ok: true, action: '/leave:prompt' };
+  }
+
   if (!ctx.pair || ctx.pair.status !== 'active') {
     if (commandToken.startsWith('/')) {
-      await sendNeedsPairMessage(transport, chatId, ctx.pair?.invitation_code);
+      await sendNeedsPairMessage(store, transport, chatId, ctx.pair?.invitation_code);
     }
     return { ok: true, action: 'needs_pair' };
   }
 
   if (commandToken === '/menu') {
-    await sendMainMenu(transport, chatId, profile.id, ctx);
+    await sendMainMenu(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/menu' };
   }
 
@@ -637,22 +892,22 @@ async function processClaimedUpdate(
   }
 
   if (commandToken === '/score') {
-    await sendScoreView(transport, chatId, profile.id, ctx);
+    await sendScoreView(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/score' };
   }
 
   if (commandToken === '/stats') {
-    await sendStatsView(transport, chatId, ctx);
+    await sendStatsView(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/stats' };
   }
 
   if (commandToken === '/history') {
-    await sendHistoryView(transport, chatId, ctx);
+    await sendHistoryView(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/history' };
   }
 
   if (commandToken === '/settings') {
-    await sendSettingsView(transport, chatId, profile.id, ctx);
+    await sendSettingsView(store, transport, chatId, profile.id, ctx);
     return { ok: true, action: '/settings' };
   }
 
@@ -803,21 +1058,23 @@ async function handleJoinFlow(
       players: buildPlayersProgress(ctx),
       viewerId: userId,
     });
-    await transport.sendMessage({
+    await editOrSendPanel({
+      store,
+      transport,
       chatId,
-      parseMode: 'HTML',
       text: `<b>Пара собрана.</b>\n\n${welcomeText}`,
-      replyMarkup: buildMainMenuKeyboard(),
+      replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, userId)),
     });
 
     if (creator) {
       const creatorConn = ctx.botConnections.find((b) => b.user_id === creator.id);
       if (creatorConn && creatorConn.telegram_chat_id !== chatId) {
-        await transport.sendMessage({
+        await editOrSendPanel({
+          store,
+          transport,
           chatId: creatorConn.telegram_chat_id,
-          parseMode: 'HTML',
           text: `<b>${escapeHtml(joiner?.display_name || 'Друг')}</b> в игре. Можно начинать.`,
-          replyMarkup: buildMainMenuKeyboard(),
+          replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, creator.id)),
         });
       }
     }
@@ -1032,18 +1289,19 @@ async function handleMissAction(params: {
     }
 
     if (actorChatId && actorChatId !== recipientChatId) {
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId: actorChatId,
-        parseMode: 'HTML',
         text: [
           `<b>Сцена завершена</b> — ${escapeHtml(scene.title)}`,
           '',
           `Счёт: ${formatScoreboardLine(players, actor.id, pair.finish_threshold)}`,
           recipientChatId
-            ? '<i>Друг получил конверт со сценой — анимация запустится, когда он откроет её.</i>'
-            : '<i>Друг ещё не открыл бота в личных сообщениях или отключил уведомления.</i>',
+            ? '<i>Друг получил конверт — анимация запустится, когда он откроет её.</i>'
+            : '<i>Друг ещё не открыл бота или отключил уведомления.</i>',
         ].join('\n'),
-        replyMarkup: buildMainMenuKeyboard(),
+        replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(pair, actor.id)),
       });
     }
   }
@@ -1112,6 +1370,7 @@ async function handleCallbackLogAction(params: {
   const actorProg = players.find((p) => p.userId === actor.id);
 
   await editOrSendPanel({
+    store,
     transport,
     chatId: sourceChatId,
     messageId,
@@ -1122,7 +1381,7 @@ async function handleCallbackLogAction(params: {
       `Всего перезвонов за раунд: <b>${actorProg?.callbacksCount ?? 1}</b>`,
       `Счёт: ${formatScoreboardLine(players, actor.id, pair.finish_threshold)}`,
     ].join('\n'),
-    replyMarkup: buildMainMenuKeyboard(),
+    replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(pair, actor.id)),
   });
 
   return { ok: true, action: 'callback:logged' };
@@ -1160,7 +1419,7 @@ async function handleScenePreviewAction(params: {
         showAlert: true,
       });
     } else {
-      await sendNeedsPairMessage(transport, sourceChatId, ctx.pair?.invitation_code);
+      await sendNeedsPairMessage(store, transport, sourceChatId, ctx.pair?.invitation_code);
     }
     return { ok: true, action: 'preview:needs_pair' };
   }
@@ -1192,9 +1451,10 @@ async function handleScenePreviewAction(params: {
     sleep,
   });
 
-  await transport.sendMessage({
+  await editOrSendPanel({
+    store,
+    transport,
     chatId: sourceChatId,
-    parseMode: 'HTML',
     text: [
       `<b>Превью сцены</b> — ${escapeHtml(scene.title)}`,
       `<i>Категория: ${SCENE_TYPE_LABELS[scene.type]} · счёт раунда не изменён</i>`,
@@ -1356,7 +1616,7 @@ async function handleReplaySceneAction(params: {
       '<b>Счёт раунда</b>',
       scoreLines,
     ].join('\n');
-    finalMarkup = buildMainMenuKeyboard();
+    finalMarkup = buildMainMenuKeyboard(buildPairSettingsUrl(pair, userId));
   } else {
     finalText = [
       `<b>СОБЫТИЕ ОТМЕНЕНО</b>`,
@@ -1365,15 +1625,17 @@ async function handleReplaySceneAction(params: {
       '<b>Счёт раунда</b>',
       scoreLines,
     ].join('\n');
-    finalMarkup = buildMainMenuKeyboard();
+    finalMarkup = buildMainMenuKeyboard(buildPairSettingsUrl(pair, userId));
   }
 
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId: msgId,
     text: finalText,
     replyMarkup: finalMarkup,
+    rememberPanel: latestEvent.status === 'confirmed' || latestEvent.status === 'cancelled',
   });
 
   return { ok: true, action: 'replay:completed' };
@@ -1476,8 +1738,9 @@ async function handleEventCallbackAction(params: {
           '<b>Счёт раунда</b>',
           scoreLines,
         ].join('\n'),
-        replyMarkup: buildMainMenuKeyboard(),
+        replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(pair, userId)),
       });
+      await store.setChatPanelMessageId(chatId, msgId);
     } else if (action === 'dispute') {
       await transport.editMessageText({
         chatId,
@@ -1504,8 +1767,9 @@ async function handleEventCallbackAction(params: {
           '<b>Счёт раунда</b>',
           scoreLines,
         ].join('\n'),
-        replyMarkup: buildMainMenuKeyboard(),
+        replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(pair, userId)),
       });
+      await store.setChatPanelMessageId(chatId, msgId);
     }
   }
 
@@ -1521,11 +1785,16 @@ async function handleEventCallbackAction(params: {
           : action === 'dispute'
             ? `<b>${escapeHtml(recipient.display_name)}</b> оспаривает пропуск. Шаг заморожен.`
             : `<b>${escapeHtml(actor.display_name)}</b> отменил(а) отметку о пропуске.`;
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId: partnerConn.telegram_chat_id,
-        parseMode: 'HTML',
         text: `${dmStatus}\n\n${scoreLines}`,
-        replyMarkup: action === 'dispute' ? buildDisputedEventKeyboard(event.id) : buildMainMenuKeyboard(),
+        replyMarkup:
+          action === 'dispute'
+            ? buildDisputedEventKeyboard(event.id)
+            : buildMainMenuKeyboard(buildPairSettingsUrl(pair, partner.id)),
+        rememberPanel: action !== 'dispute',
       });
     }
   }
@@ -1564,11 +1833,12 @@ async function handleEventCallbackAction(params: {
       players,
     });
     for (const tc of targetChats) {
-      await transport.sendMessage({
+      await editOrSendPanel({
+        store,
+        transport,
         chatId: tc,
-        parseMode: 'HTML',
         text: gameOverText,
-        replyMarkup: buildGameOverKeyboard(),
+        replyMarkup: buildGameOverKeyboard(buildPairSettingsUrl(pair, userId)),
       });
     }
   }
@@ -1602,33 +1872,48 @@ export async function cleanupExpiredAnimations(
 }
 
 async function sendNeedsPairMessage(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
-  waitingCode?: string
+  waitingCode?: string,
+  messageId?: number
 ): Promise<void> {
   if (waitingCode) {
-    await transport.sendMessage({
+    await editOrSendPanel({
+      store,
+      transport,
       chatId,
-      parseMode: 'HTML',
+      messageId,
       text: [
         '<b>ОЖИДАНИЕ ВТОРОГО ИГРОКА</b>',
         '',
         `Код пары: <code>${escapeHtml(waitingCode)}</code>`,
         `Друг должен отправить боту: <code>/join ${escapeHtml(waitingCode)}</code>`,
       ].join('\n'),
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            { text: 'Задать имя', callback_data: 'act:name_prompt' },
+            { text: 'Отменить код', callback_data: 'pair:leave_confirm' },
+          ],
+        ],
+      },
     });
     return;
   }
 
-  await transport.sendMessage({
+  await editOrSendPanel({
+    store,
+    transport,
     chatId,
-    parseMode: 'HTML',
-    text: '<b>АЛЛО, РОУД</b>\n\nСоздайте игровую пару или введите код от друга:',
+    messageId,
+    text: '<b>АЛЛО, ПИДР</b>\n\nСоздайте игровую пару или введите код от друга:',
     replyMarkup: buildUnpairedKeyboard(),
   });
 }
 
 async function sendMainMenu(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
@@ -1640,6 +1925,7 @@ async function sendMainMenu(
   const players = buildPlayersProgress(ctx);
 
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId,
@@ -1650,11 +1936,12 @@ async function sendMainMenu(
       players,
       viewerId,
     }),
-    replyMarkup: buildMainMenuKeyboard(),
+    replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, viewerId)),
   });
 }
 
 async function sendScoreView(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
@@ -1662,6 +1949,7 @@ async function sendScoreView(
   messageId?: number
 ): Promise<void> {
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId,
@@ -1670,13 +1958,15 @@ async function sendScoreView(
       pair: ctx.pair!,
       players: buildPlayersProgress(ctx),
     }),
-    replyMarkup: buildMainMenuKeyboard(),
+    replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, viewerId)),
   });
 }
 
 async function sendStatsView(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
+  viewerId: string,
   ctx: PairContext,
   messageId?: number
 ): Promise<void> {
@@ -1691,6 +1981,7 @@ async function sendStatsView(
   });
 
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId,
@@ -1699,17 +1990,20 @@ async function sendStatsView(
       finishThreshold: ctx.pair!.finish_threshold,
       profiles: ctx.profiles,
     }),
-    replyMarkup: buildMainMenuKeyboard(),
+    replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, viewerId)),
   });
 }
 
 async function sendHistoryView(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
+  viewerId: string,
   ctx: PairContext,
   messageId?: number
 ): Promise<void> {
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId,
@@ -1717,11 +2011,12 @@ async function sendHistoryView(
       events: ctx.events,
       profiles: ctx.profiles,
     }),
-    replyMarkup: buildMainMenuKeyboard(),
+    replyMarkup: buildMainMenuKeyboard(buildPairSettingsUrl(ctx.pair, viewerId)),
   });
 }
 
 async function sendSettingsView(
+  store: BotStore,
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
@@ -1731,6 +2026,7 @@ async function sendSettingsView(
   const conn = ctx.botConnections.find((b) => b.user_id === viewerId);
   const enabled = conn?.notification_enabled ?? true;
   await editOrSendPanel({
+    store,
     transport,
     chatId,
     messageId,
@@ -1741,6 +2037,7 @@ async function sendSettingsView(
     replyMarkup: buildSettingsKeyboard({
       pair: ctx.pair!,
       notificationsEnabled: enabled,
+      settingsUrl: buildPairSettingsUrl(ctx.pair, viewerId),
     }),
   });
 }

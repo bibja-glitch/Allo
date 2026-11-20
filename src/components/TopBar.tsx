@@ -9,6 +9,7 @@ interface TopBarProps {
 
 const NAV_ITEMS: Array<{ id: ActiveTab; label: string; mobileLabel?: string }> = [
   { id: 'simulator', label: 'Симулятор' },
+  { id: 'settings', label: 'Настройки пары', mobileLabel: 'Настройки' },
   { id: 'scenes', label: 'Сцены' },
   { id: 'deploy', label: 'Деплой и статус', mobileLabel: 'Деплой' },
 ];
@@ -21,14 +22,14 @@ export function TopBar({ activeTab, onSelectTab, onQuickPlay }: TopBarProps) {
           <div className="h-7 w-7 overflow-hidden rounded border border-zinc-200 bg-[#111214] shrink-0">
             <img
               src="/src/assets/images/bot_avatar_minimal_1795174484247.jpg"
-              alt="Аватар бота АЛЛО, РОУД!"
+              alt="Аватар бота АЛЛО, ПИДР!"
               className="h-full w-full object-cover"
               referrerPolicy="no-referrer"
             />
           </div>
           <div className="flex items-baseline gap-2.5">
             <span className="font-display text-xs sm:text-sm font-bold tracking-tight text-zinc-950 whitespace-nowrap">
-              АЛЛО, РОУД!
+              АЛЛО, ПИДР!
             </span>
             <span className="hidden md:inline text-xs text-zinc-400 whitespace-nowrap">
               · Telegram-дуэль
@@ -45,7 +46,7 @@ export function TopBar({ activeTab, onSelectTab, onQuickPlay }: TopBarProps) {
                 type="button"
                 onClick={() => onSelectTab(item.id)}
                 aria-current={isActive ? 'page' : undefined}
-                className={`px-2 py-1.5 text-xs sm:px-3 sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                className={`px-1.5 py-1 text-[11px] sm:px-3 sm:py-1.5 sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
                   isActive
                     ? 'bg-zinc-950 text-white'
                     : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950'
