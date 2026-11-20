@@ -1,8 +1,22 @@
-import { getAsciiSceneInventory } from './asciiScenes.js';
+import { getAsciiSceneById, getAsciiSceneInventory, renderAsciiSceneFrames } from './asciiScenes.js';
 import { cleanupExpiredAnimations, processTelegramUpdate, type TelegramUpdate } from './botEngine.js';
-import { isUpstashConfigured } from './redis.js';
+import {
+  BOT_COMMANDS,
+  BOT_DESCRIPTION,
+  BOT_SHORT_DESCRIPTION,
+  syncBotVisualProfileOnDeploy,
+} from './botProfile.js';
 import { renderStatusHtml, runDiagnostics } from './diagnostics.js';
-import { isBotTokenConfigured, tgGetMe, tgSetMyCommands, tgSetWebhook } from './telegramApi.js';
+import { isUpstashConfigured } from './redis.js';
+import {
+  isBotTokenConfigured,
+  tgGetMe,
+  tgSetMyCommands,
+  tgSetMyDescription,
+  tgSetMyProfilePhoto,
+  tgSetMyShortDescription,
+  tgSetWebhook,
+} from './telegramApi.js';
 
 export interface HttpHandlerResult {
   status: number;
@@ -31,12 +45,59 @@ export async function handleBotHealth(): Promise<HttpHandlerResult> {
       ok: report.ok,
       checks: report.checks,
       expectedWebhookUrl: report.expectedWebhookUrl,
-      service: 'АЛЛО, РОУД! — ASCII CHAOS Telegram Bot',
+      botProfile: report.botProfile,
+      service: 'АЛЛО, РОУД! — Telegram Bot',
       database: isUpstashConfigured() ? 'upstash_redis' : 'local_fallback',
       telegramConfigured: isBotTokenConfigured(),
       webhookSecretConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
       asciiScenes: getAsciiSceneInventory(),
       serverTime: new Date().toISOString(),
+    },
+  };
+}
+
+export async function handleScenesCatalog(query: Record<string, unknown> = {}): Promise<HttpHandlerResult> {
+  const sceneId = typeof query.id === 'string' ? query.id : undefined;
+  const winnerSide = query.side === 'right' ? 'right' : 'left';
+  const fastMode = query.fast === 'true' || query.fast === '1';
+
+  if (sceneId) {
+    const scene = getAsciiSceneById(sceneId);
+    if (!scene) {
+      return { status: 404, body: { ok: false, error: 'Scene not found' } };
+    }
+    const frames = renderAsciiSceneFrames(scene, {
+      winnerSide,
+      winnerName: typeof query.winner === 'string' && query.winner ? query.winner : 'Кирилл',
+      loserName: typeof query.loser === 'string' && query.loser ? query.loser : 'Денис',
+      fastMode,
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        scene: {
+          id: scene.id,
+          title: scene.title,
+          type: scene.type,
+          description: scene.description,
+          frameDelayMs: scene.frameDelayMs,
+        },
+        frames,
+      },
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      ...getAsciiSceneInventory(),
+      profileTemplate: {
+        shortDescription: BOT_SHORT_DESCRIPTION,
+        description: BOT_DESCRIPTION,
+        commands: BOT_COMMANDS,
+      },
     },
   };
 }
@@ -63,7 +124,6 @@ export async function handleTelegramBotWebhook(
     return { status: 200, body: result };
   } catch (err) {
     console.error('Telegram webhook processing failed:', err);
-    // 500 => Telegram повторит доставку; метка дедупликации уже снята в processTelegramUpdate
     return { status: 500, body: { ok: false, error: 'Internal error while processing update' } };
   }
 }
@@ -96,7 +156,9 @@ export async function handleSetupWebhook(
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
   ).replace(/\/+$/, '');
 
-  if (!appUrl.startsWith('https://')) {
+  const skipWebhook = queryOrBody.profileOnly === 'true' || queryOrBody.profileOnly === true;
+
+  if (!skipWebhook && !appUrl.startsWith('https://')) {
     return {
       status: 400,
       body: {
@@ -106,24 +168,32 @@ export async function handleSetupWebhook(
     };
   }
 
-  const webhookUrl = `${appUrl}/api/telegram/webhook`;
-  const [meRes, hookRes, cmdsRes] = await Promise.all([
+  const webhookUrl = appUrl ? `${appUrl}/api/telegram/webhook` : null;
+
+  const [meRes, hookRes, profileRes] = await Promise.all([
     tgGetMe(),
-    tgSetWebhook({
-      url: webhookUrl,
-      secretToken: process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || undefined,
+    webhookUrl
+      ? tgSetWebhook({
+          url: webhookUrl,
+          secretToken: process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || undefined,
+        })
+      : Promise.resolve({ ok: true, result: true }),
+    syncBotVisualProfileOnDeploy({
+      setMyCommands: tgSetMyCommands,
+      setMyDescription: tgSetMyDescription,
+      setMyShortDescription: tgSetMyShortDescription,
+      setMyProfilePhoto: tgSetMyProfilePhoto,
     }),
-    tgSetMyCommands(),
   ]);
 
   return {
     status: hookRes.ok ? 200 : 502,
     body: {
-      ok: hookRes.ok && cmdsRes.ok,
+      ok: Boolean(hookRes.ok && profileRes.ok),
       bot: meRes.result || null,
       webhookUrl,
       setWebhook: hookRes,
-      setMyCommands: cmdsRes,
+      visualProfile: profileRes,
     },
   };
 }

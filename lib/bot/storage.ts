@@ -43,6 +43,7 @@ export async function getPairById(pairId: string): Promise<Pair | null> {
     last_animation_file: raw.last_animation_file || null,
     recent_scenes: raw.recent_scenes ? JSON.parse(raw.recent_scenes) : [],
     round_started_at: raw.round_started_at || new Date().toISOString(),
+    fast_animation: raw.fast_animation === 'true',
     created_at: raw.created_at || new Date().toISOString(),
   };
 }
@@ -78,6 +79,7 @@ export async function createPair(userId: string, groupChatId?: string | null): P
     last_animation_file: null,
     recent_scenes: [],
     round_started_at: nowIso,
+    fast_animation: false,
     created_at: nowIso,
   };
 
@@ -108,7 +110,8 @@ export async function createPair(userId: string, groupChatId?: string | null): P
     group_chat_id: pair.group_chat_id || '',
     last_animation_file: '',
     recent_scenes: JSON.stringify([]),
-    round_started_at: pair.round_started_at,
+    round_started_at: pair.round_started_at || nowIso,
+    fast_animation: 'false',
     created_at: pair.created_at,
   });
 
@@ -142,11 +145,9 @@ export async function joinPairByCode(
 
   const pair = await getPairById(pairId);
   if (!pair) {
-    // Приглашение осталось, а сама пара уже удалена (например, её создатель вошёл в другую пару).
-    // Чистим устаревший код, чтобы он не мешал, и объясняем, что делать.
     await removeInvitation(normalized);
     throw new Error(
-      `Приглашение ${normalized} устарело: эта пара уже не существует. Попроси друга создать новый код (кнопка «создать приглашение») и отправь его сюда.`
+      `Приглашение ${normalized} устарело: эта пара уже не существует. Попроси друга создать новый код и отправь его сюда.`
     );
   }
 
@@ -158,7 +159,7 @@ export async function joinPairByCode(
   const existingPairId = await getUserPairId(userId);
   if (existingPairId) {
     if (existingPairId === pairId) {
-      throw new Error('Это твой собственный код приглашения. Отправь его другу — пусть он введёт его в боте со своего аккаунта.');
+      throw new Error('Это твой собственный код приглашения. Отправь его другу — пусть он введёт его со своего аккаунта.');
     }
     const existingPair = await getPairById(existingPairId);
     const existingMembers = existingPair ? await getPairMembers(existingPairId) : [];
@@ -166,7 +167,6 @@ export async function joinPairByCode(
     if (!isSoloWaiting) {
       throw new Error('Ты уже состоишь в игровой паре.');
     }
-    // Все проверки целевой пары пройдены — только теперь заменяем свою пустую пару приглашённой
     await abandonSoloPair(userId, existingPairId, existingPair?.invitation_code || null);
   }
 
@@ -265,6 +265,7 @@ export async function updateSettings(params: {
   cooldownSeconds?: number;
   notificationEnabled?: boolean;
   roundStartedAt?: string;
+  fastAnimation?: boolean;
 }): Promise<void> {
   const pair = await getPairById(params.pairId);
   if (pair) {
@@ -280,6 +281,10 @@ export async function updateSettings(params: {
     if (params.roundStartedAt !== undefined) {
       pair.round_started_at = params.roundStartedAt;
       pairPatch.round_started_at = pair.round_started_at;
+    }
+    if (params.fastAnimation !== undefined) {
+      pair.fast_animation = params.fastAnimation;
+      pairPatch.fast_animation = String(params.fastAnimation);
     }
 
     if (!isUpstashConfigured()) {

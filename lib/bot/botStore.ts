@@ -80,6 +80,7 @@ export interface BotStore {
     cooldownSeconds?: number;
     notificationEnabled?: boolean;
     roundStartedAt?: string;
+    fastAnimation?: boolean;
   }): Promise<void>;
   findExpiredPendingAnimations(nowIso?: string): Promise<CallEvent[]>;
 }
@@ -88,7 +89,7 @@ export class UpstashBotStore implements BotStore {
   constructor(_persistPath?: string | null) {}
 
   isPersistentDatabase(): boolean {
-    return true;
+    return isUpstashConfigured();
   }
 
   async claimWebhookUpdate(updateId: number): Promise<boolean> {
@@ -200,6 +201,7 @@ export class UpstashBotStore implements BotStore {
     cooldownSeconds?: number;
     notificationEnabled?: boolean;
     roundStartedAt?: string;
+    fastAnimation?: boolean;
   }): Promise<void> {
     await updateSettings(params);
   }

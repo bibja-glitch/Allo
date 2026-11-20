@@ -15,7 +15,11 @@ function stubTelegram(info: WebhookInfo, tokenValid = true) {
         : { ok: false, error_code: 401, description: 'Unauthorized' }
       : url.endsWith('/getWebhookInfo')
         ? { ok: true, result: info }
-        : { ok: true, result: true };
+        : url.endsWith('/getMyDescription')
+          ? { ok: true, result: { description: '' } }
+          : url.endsWith('/getMyShortDescription')
+            ? { ok: true, result: { short_description: '' } }
+            : { ok: true, result: true };
     return { json: async () => body } as Response;
   }) as typeof fetch;
   return () => {

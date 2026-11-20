@@ -1,0 +1,8 @@
+{
+  "name": "АЛЛО, РОУД!",
+  "description": "16-битная пиксельная игра для двух друзей: каждый пропущенный звонок приближает виновника к финишу.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

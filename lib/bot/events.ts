@@ -4,7 +4,6 @@ import { getRedisClient, hgetallHash, isUpstashConfigured, toHash } from './redi
 
 const WEBHOOK_DEDUP_TTL_SECONDS = 24 * 60 * 60;
 const PENDING_ANIMATIONS_KEY = 'pending_animations';
-/** Сколько последних событий пары читать за один запрос (защита от роста числа команд Redis). */
 const MAX_EVENTS_LOADED = 500;
 
 interface LocalEventsDb {
@@ -27,12 +26,10 @@ export async function claimWebhookUpdate(updateId: number): Promise<boolean> {
   }
 
   const redis = getRedisClient();
-  // NX + TTL: ключи дедупликации не копятся вечно (Telegram повторяет апдейты максимум несколько часов)
   const res = await redis.set(`webhook_update:${updateId}`, '1', { nx: true, ex: WEBHOOK_DEDUP_TTL_SECONDS });
   return res === 'OK';
 }
 
-/** Снимает метку «апдейт обработан», чтобы повтор от Telegram после ошибки не был отброшен как дубликат. */
 export async function releaseWebhookUpdate(updateId: number): Promise<void> {
   if (!isUpstashConfigured()) {
     localEvents.processedUpdates = localEvents.processedUpdates.filter((id) => id !== updateId);
@@ -165,7 +162,6 @@ export async function updateEventLifecycle(
 
   await redis.hset(`event:${eventId}`, patchMap);
 
-  // Индекс незавершённых анимаций для cron-очистки: score = время истечения (мс)
   if (typeof patch.animation_expires_at === 'string' && !patch.animation_deleted_at) {
     const expiresMs = new Date(patch.animation_expires_at).getTime();
     if (Number.isFinite(expiresMs)) {

@@ -26,7 +26,6 @@ export interface AsciiSceneDefinition {
     winnerSide: 'left' | 'right';
     winnerName: string;
     loserName: string;
-    /** Нужен только финальной GAME OVER-сцене (цель раунда настраивается 3–50). */
     finishThreshold?: number;
   }) => string[];
 }
@@ -45,14 +44,13 @@ function compileDirectionalScene(
 }
 
 export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
-  // 1. Classic Fight
   {
     id: 'classic_fight',
-    title: '🥊 Классический нокаут',
+    title: 'Классический нокаут',
     type: 'duel',
     description: 'Один боец подбегает и сносит второго сокрушительным апперкотом.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -127,7 +125,7 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
               '                   / \\   /  |\\  ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'K.O.!', align: 'center' }],
+            labels: [{ row: 1, text: 'НОКАУТ!', align: 'center' }],
           },
           {
             art: [
@@ -147,14 +145,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 2. Horse Stampede
   {
     id: 'horse_stampede',
-    title: '🐎 Нашествие скакунов',
+    title: 'Нашествие скакунов',
     type: 'animal',
     description: 'Табун диких лошадей проносится по чату и затаптывает не взявшего трубку.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'horses'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -249,14 +246,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 3. Giant Dinosaur
   {
     id: 'giant_dinosaur',
-    title: '🦖 Огромный динозавр',
+    title: 'Огромный динозавр',
     type: 'animal',
     description: 'Тираннозавр врывается в сцену и съедает опаздывающего к телефону.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 't-rex'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -357,14 +353,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 4. Express Train
   {
     id: 'express_train',
-    title: '🚂 Поезд-экспресс',
+    title: 'Поезд-экспресс',
     type: 'transport',
     description: 'Поезд несётся через экран и сносит не поднявшего трубку.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'train'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -459,14 +454,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 5. Shadow Ninja
   {
     id: 'shadow_ninja',
-    title: '🥷 Призрак-ниндзя',
+    title: 'Призрак-ниндзя',
     type: 'duel',
     description: 'Тень появляется за спиной и делает моментальный комбо-удар.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -556,14 +550,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 6. Mini-Fighter Army
   {
     id: 'mini_army',
-    title: '⚔️ Армия мини-человечков',
+    title: 'Армия мини-воинов',
     type: 'absurd',
     description: 'Десяток крошечных воинов атакует не взявшего трубку со всех сторон.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'army'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -652,14 +645,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 7. Meteor Strike
   {
     id: 'meteor_strike',
-    title: '☄️ Падение метеорита',
+    title: 'Падение метеорита',
     type: 'disaster',
     description: 'Космический булыжник падает с неба прямо на голову игнорщика.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'meteor'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -725,7 +717,7 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
               '  / \\                 / | \\     ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: '* K A B O O M ! *', align: 'center' }],
+            labels: [{ row: 1, text: '* БА-БАХ! *', align: 'center' }],
           },
           {
             art: [
@@ -757,14 +749,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 8. UFO Abduction
   {
     id: 'ufo_abduction',
-    title: '🛸 Инопланетное похищение',
+    title: 'Инопланетное похищение',
     type: 'sci_fi',
     description: 'Тарелка прилетает сверху, включает луч и уносит игрока в космос.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'ufo'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -866,14 +857,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 9. Sumo Ring
   {
     id: 'sumo_ring',
-    title: '🥋 Сумо-выталкивание',
+    title: 'Сумо-выталкивание',
     type: 'sport',
     description: 'Боец-сумоист выталкивает соперника за край ринга.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -983,14 +973,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 10. Tsunami Wave
   {
     id: 'tsunami_wave',
-    title: '🌊 Цунами смывает',
+    title: 'Цунами смывает',
     type: 'disaster',
     description: 'Гигантская волна накатывает по строкам и уносит игрока за край экрана.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'wave'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1085,14 +1074,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 11. Wizard Frog Spell
   {
     id: 'wizard_frog',
-    title: '🧙 Магическое превращение',
+    title: 'Магическое превращение',
     type: 'magic',
     description: 'Волшебник кастует заклинание, и соперник превращается в лягушку!',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1195,14 +1183,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 12. Giant Chicken
   {
     id: 'giant_chicken',
-    title: '🐔 Бешеная гигантская курица',
+    title: 'Гигантская курица',
     type: 'animal',
     description: 'Гигантская курица выбегает, клюёт врага и уводит его за экран.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'chicken'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1296,14 +1283,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 13. Red Button Explosion
   {
     id: 'red_button_boom',
-    title: '💣 Взрыв кнопки',
+    title: 'Красная кнопка',
     type: 'absurd',
     description: 'Над игроком появляется красная кнопка с отсчётом 3... 2... 1... БУМ!',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'bomb'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1369,7 +1355,7 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
               '  /|\\               * / | \\ *   ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: '* B O O M ! *', align: 'center' }],
+            labels: [{ row: 1, text: '* Б А Б А Х ! *', align: 'center' }],
           },
           {
             art: [
@@ -1401,14 +1387,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 14. Boxing Ring
   {
     id: 'boxing_ring',
-    title: '🥊 Боксёрский ринг',
+    title: 'Боксёрский ринг',
     type: 'sport',
     description: 'Два боксёра сходятся на ринге, серия джебов и нокаут с канатами.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1483,7 +1468,7 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
               '|           / \\      ___O___   |',
               '|==============================|',
             ],
-            labels: [{ row: 1, text: '1..2..3..K.O.!', align: 'center' }],
+            labels: [{ row: 1, text: '1..2..3..НОКАУТ!', align: 'center' }],
           },
           {
             art: [
@@ -1507,14 +1492,13 @@ export const ASCII_SCENES_PART_1: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 15. Trapdoor Pit
   {
     id: 'trapdoor_pit',
-    title: '🕳️ Люк в полу',
+    title: 'Люк в полу',
     type: 'absurd',
     description: 'Под игроком открывается люк и он стремительно проваливается вниз.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(

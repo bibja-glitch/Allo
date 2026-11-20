@@ -4,13 +4,13 @@ export const SCENE_HEIGHT = 11;
 export const FINAL_FATALITY_LINES: string[] = [
   '================================',
   '',
-  '         F A T A L I T Y !',
+  '        F A T A L I T Y !       ',
   '',
-  '           GAME OVER',
+  '           GAME OVER            ',
   '',
-  '      ТЫ НЕ ПОДНЯЛ ТРУБКУ!',
+  '     ТЫ НЕ ПОДНЯЛ ТРУБКУ!       ',
   '',
-  '          +1 ПРОПУСК',
+  '          +1 ПРОПУСК            ',
   '',
   '================================',
 ];
@@ -59,10 +59,10 @@ const MIRROR_CHAR_MAP: Record<string, string> = {
   '}': '{',
   '<': '>',
   '>': '<',
-  'd': 'b',
-  'b': 'd',
-  'p': 'q',
-  'q': 'p',
+  d: 'b',
+  b: 'd',
+  p: 'q',
+  q: 'p',
 };
 
 export function mirrorLine(line: string, width = SCENE_WIDTH): string {
@@ -79,9 +79,6 @@ export function mirrorLines(lines: string[], width = SCENE_WIDTH): string[] {
   return normalizeLines(lines, width).map((l) => mirrorLine(l, width));
 }
 
-/**
- * Places a readable text label centered on a specific row without mirroring characters.
- */
 export function stampCenteredText(
   lines: string[],
   row: number,
@@ -100,9 +97,6 @@ export function stampCenteredText(
   return next;
 }
 
-/**
- * Stamps text at an explicit x column (0-based) on the given row.
- */
 export function stampTextAt(
   lines: string[],
   row: number,
@@ -124,9 +118,7 @@ export function stampTextAt(
 }
 
 export interface DirectionalFrameSpec {
-  /** Art rows written assuming LEFT character is the WINNER and RIGHT character is the LOSER. */
   art: string[];
-  /** Optional readable labels stamped AFTER horizontal mirroring when winnerSide === 'right'. */
   labels?: Array<{
     row: number;
     text: string;
@@ -136,11 +128,6 @@ export interface DirectionalFrameSpec {
   }>;
 }
 
-/**
- * Renders a directional frame: if winnerSide === 'right', mirrors the visual ASCII art horizontally
- * so the winner's attack/action always moves from the actual winner toward the actual loser,
- * while stamping text labels un-mirrored so words stay legible.
- */
 export function renderDirectionalFrame(
   spec: DirectionalFrameSpec,
   winnerSide: 'left' | 'right',
@@ -172,7 +159,6 @@ export function renderDirectionalFrame(
     }
   }
 
-  // Stamp short player tags on top row (row 0) if row 0 is free or explicitly header-reserved
   if (out[0].trim().length === 0) {
     const wTag = `${winnerLabel.slice(0, 9)}*`;
     const lTag = `${loserLabel.slice(0, 9)}`;

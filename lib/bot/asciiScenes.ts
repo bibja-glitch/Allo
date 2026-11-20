@@ -8,6 +8,17 @@ import { ASCII_SCENES_PART_2 } from './asciiScenesPart2.js';
 
 export type { AsciiSceneDefinition, AsciiSceneType };
 
+export const SCENE_TYPE_LABELS: Record<AsciiSceneType, string> = {
+  duel: 'Дуэли',
+  animal: 'Звери',
+  transport: 'Транспорт',
+  magic: 'Магия',
+  sci_fi: 'Космос',
+  disaster: 'Стихия',
+  absurd: 'Абсурд',
+  sport: 'Спорт',
+};
+
 export const ASCII_SCENES: AsciiSceneDefinition[] = [
   ...ASCII_SCENES_PART_1,
   ...ASCII_SCENES_PART_2,
@@ -15,11 +26,11 @@ export const ASCII_SCENES: AsciiSceneDefinition[] = [
 
 export const ASCII_GAMEOVER_SCENE: AsciiSceneDefinition = {
   id: 'ascii_gameover_finale',
-  title: '🏆 ФИНАЛ: ЗВАНИЕ ПРИСУЖДЕНО',
+  title: 'Финал раунда',
   type: 'sport',
-  description: 'Торжественное вручение позорного кубка на финише.',
-  frameDelayMs: 950,
-  durationMs: 950 * 8,
+  description: 'Торжественное вручение титула на финише.',
+  frameDelayMs: 900,
+  durationMs: 900 * 8,
   participants: ['winner', 'loser'],
   buildFrames: ({ loserName, finishThreshold }) => {
     const n = finishThreshold && finishThreshold > 0 ? finishThreshold : 10;
@@ -102,7 +113,7 @@ export const ASCII_GAMEOVER_SCENE: AsciiSceneDefinition = {
       [
         '================================',
         '',
-        '         F A T A L I T Y !      ',
+        '        F A T A L I T Y !       ',
         '',
         '           GAME OVER            ',
         '',
@@ -125,30 +136,46 @@ export function getAsciiSceneById(sceneId: string): AsciiSceneDefinition | null 
   return ASCII_SCENES.find((s) => s.id === sceneId) || null;
 }
 
-/**
- * Picks a random scene while strictly avoiding consecutive repeats (`recentSceneIds[0]`)
- * and preferring scenes not played in the recent history window.
- */
 export function pickRandomAsciiScene(
   recentSceneIds: string[] = [],
-  randomFn: () => number = Math.random
+  randomFn: () => number = Math.random,
+  filterType?: AsciiSceneType
 ): AsciiSceneDefinition {
+  const catalog = filterType
+    ? ASCII_SCENES.filter((s) => s.type === filterType)
+    : ASCII_SCENES;
+  const source = catalog.length > 0 ? catalog : ASCII_SCENES;
+
   const lastSceneId = recentSceneIds[0] || null;
   const recentSet = new Set(recentSceneIds);
 
-  let pool = ASCII_SCENES.filter((s) => !recentSet.has(s.id));
+  let pool = source.filter((s) => !recentSet.has(s.id));
 
   if (pool.length === 0) {
-    pool = ASCII_SCENES.filter((s) => s.id !== lastSceneId);
+    pool = source.filter((s) => s.id !== lastSceneId);
   }
   if (pool.length === 0) {
-    pool = ASCII_SCENES;
+    pool = source;
   }
 
   const raw = randomFn();
   const clamped = Number.isFinite(raw) ? Math.min(0.999999, Math.max(0, raw)) : 0;
   const idx = Math.floor(clamped * pool.length);
   return pool[idx];
+}
+
+/**
+ * Selects either full 8-frame sequence or snappy 5-keyframe sequence when fastAnimation is enabled.
+ */
+export function selectAnimationFrames(frames: string[], fastMode = false): string[] {
+  if (!fastMode || frames.length <= 5) return frames;
+  return [
+    frames[0],
+    frames[Math.floor(frames.length * 0.28)],
+    frames[Math.floor(frames.length * 0.56)],
+    frames[frames.length - 2],
+    frames[frames.length - 1],
+  ];
 }
 
 export function renderAsciiSceneFrames(
@@ -158,9 +185,11 @@ export function renderAsciiSceneFrames(
     winnerName: string;
     loserName: string;
     finishThreshold?: number;
+    fastMode?: boolean;
   }
 ): string[] {
-  return scene.buildFrames(params);
+  const frames = scene.buildFrames(params);
+  return selectAnimationFrames(frames, Boolean(params.fastMode));
 }
 
 export function getAsciiSceneInventory(): {
@@ -170,6 +199,7 @@ export function getAsciiSceneInventory(): {
     id: string;
     title: string;
     type: AsciiSceneType;
+    typeLabel: string;
     description: string;
     durationMs: number;
   }>;
@@ -185,6 +215,7 @@ export function getAsciiSceneInventory(): {
       id: s.id,
       title: s.title,
       type: s.type,
+      typeLabel: SCENE_TYPE_LABELS[s.type],
       description: s.description,
       durationMs: s.durationMs,
     })),

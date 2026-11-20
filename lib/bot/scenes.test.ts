@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ASCII_GAMEOVER_SCENE, ASCII_SCENES } from './asciiScenes.js';
+import { ASCII_GAMEOVER_SCENE, ASCII_SCENES, renderAsciiSceneFrames } from './asciiScenes.js';
 
-// Латиница, которая остаётся намеренно: GAME OVER (по требованию) и элемент рисунка «xOx» (мёртвое лицо).
 const ALLOWED_LATIN = new Set(['GAME', 'OVER', 'xOx']);
 
 test('all ASCII scenes: frames fit 32 columns and contain no untranslated English text', () => {
@@ -35,4 +34,12 @@ test('game over scene shows custom threshold in Russian', () => {
   const text = ASCII_GAMEOVER_SCENE.buildFrames({ winnerSide: 'left', winnerName: 'A', loserName: 'B', finishThreshold: 25 }).join('\n');
   assert.match(text, /25 \/ 25  ФИНИШ!/);
   assert.match(text, /ТЕЛЕФОН 25 РАЗ/);
+});
+
+test('fastMode returns crisp 5-frame sequence ending on FATALITY', () => {
+  const full = renderAsciiSceneFrames(ASCII_SCENES[0], { winnerSide: 'left', winnerName: 'Аня', loserName: 'Боря', fastMode: false });
+  const fast = renderAsciiSceneFrames(ASCII_SCENES[0], { winnerSide: 'left', winnerName: 'Аня', loserName: 'Боря', fastMode: true });
+  assert.equal(full.length, 8);
+  assert.equal(fast.length, 5);
+  assert.equal(fast[4], full[7]);
 });

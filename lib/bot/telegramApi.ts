@@ -1,3 +1,4 @@
+import { BOT_COMMANDS } from './botProfile.js';
 import type { InlineKeyboardMarkup } from './messages.js';
 
 export interface TelegramApiResponse<T = unknown> {
@@ -131,18 +132,80 @@ export async function tgSetWebhook(params: {
   });
 }
 
-export async function tgSetMyCommands(): Promise<TelegramApiResponse<boolean>> {
-  return postJson<boolean>('setMyCommands', {
-    commands: [
-      { command: 'start', description: 'Регистрация и главное меню' },
-      { command: 'miss', description: '🥊 Он не поднял телефон!' },
-      { command: 'score', description: '📊 Общий счёт друзей' },
-      { command: 'history', description: '📜 История пропущенных звонков' },
-      { command: 'settings', description: '⚙️ Настройки пары' },
-      { command: 'join', description: '🔗 Присоединиться по коду пары' },
-      { command: 'menu', description: '🏠 Показать кнопки меню' },
-    ],
+export async function tgSetMyCommands(
+  commands: Array<{ command: string; description: string }> = BOT_COMMANDS
+): Promise<TelegramApiResponse<boolean>> {
+  return postJson<boolean>('setMyCommands', { commands });
+}
+
+export async function tgSetMyDescription(
+  description: string,
+  languageCode?: string
+): Promise<TelegramApiResponse<boolean>> {
+  return postJson<boolean>('setMyDescription', {
+    description,
+    ...(languageCode ? { language_code: languageCode } : {}),
   });
+}
+
+export async function tgSetMyShortDescription(
+  shortDescription: string,
+  languageCode?: string
+): Promise<TelegramApiResponse<boolean>> {
+  return postJson<boolean>('setMyShortDescription', {
+    short_description: shortDescription,
+    ...(languageCode ? { language_code: languageCode } : {}),
+  });
+}
+
+export async function tgSetMyProfilePhoto(
+  photoBuffer: Buffer,
+  filename = 'bot-avatar.jpg'
+): Promise<TelegramApiResponse<boolean>> {
+  const token = getBotToken();
+  if (!token) {
+    return { ok: false, description: 'TELEGRAM_BOT_TOKEN is not configured' };
+  }
+
+  try {
+    const form = new FormData();
+    form.append('photo', JSON.stringify({ type: 'static', photo: 'attach://avatar_file' }));
+    const mimeType = filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    form.append('avatar_file', new Blob([new Uint8Array(photoBuffer)], { type: mimeType }), filename);
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/setMyProfilePhoto`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      result?: boolean;
+      description?: string;
+      error_code?: number;
+      parameters?: { retry_after?: number };
+    };
+    return {
+      ok: Boolean(data.ok),
+      result: data.result,
+      description: data.description,
+      errorCode: data.error_code,
+      retryAfter: data.parameters?.retry_after,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      description: err instanceof Error ? err.message : 'Telegram network error',
+    };
+  }
+}
+
+export async function tgGetMyDescription(): Promise<TelegramApiResponse<{ description?: string }>> {
+  return postJson<{ description?: string }>('getMyDescription', {});
+}
+
+export async function tgGetMyShortDescription(): Promise<TelegramApiResponse<{ short_description?: string }>> {
+  return postJson<{ short_description?: string }>('getMyShortDescription', {});
 }
 
 export async function tgGetMe(): Promise<TelegramApiResponse<{ id: number; username?: string; first_name: string }>> {

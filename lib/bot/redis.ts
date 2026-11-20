@@ -19,9 +19,6 @@ export function getRedisClient(): Redis {
       );
     }
 
-    // Данные в хранилище — уже JSON-строки, которые код парсит сам (JSON.parse).
-    // Без этого флага Upstash сам десериализует ответы: массивы/объекты приходят
-    // уже распарсенными, а строки "true"/"123" превращаются в boolean/number.
     redisClient = new Redis({
       url,
       token,
@@ -31,11 +28,6 @@ export function getRedisClient(): Redis {
   return redisClient;
 }
 
-/**
- * Приводит ответ HGETALL к объекту.
- * При automaticDeserialization:false Upstash может вернуть хэш плоским массивом [поле, значение, поле, значение, ...],
- * при включённой десериализации — объект. Поддерживаем оба варианта; пустой/отсутствующий хэш => null.
- */
 export function toHash(value: unknown): Record<string, string> | null {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) {
@@ -51,7 +43,14 @@ export function toHash(value: unknown): Record<string, string> | null {
     if (entries.length === 0) return null;
     const obj: Record<string, string> = {};
     for (const [k, v] of entries) {
-      obj[k] = typeof v === 'string' ? v : v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+      obj[k] =
+        typeof v === 'string'
+          ? v
+          : v === null || v === undefined
+            ? ''
+            : typeof v === 'object'
+              ? JSON.stringify(v)
+              : String(v);
     }
     return obj;
   }

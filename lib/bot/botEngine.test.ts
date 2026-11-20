@@ -18,6 +18,12 @@ import {
   type TelegramTransport,
   type TelegramUpdate,
 } from './botEngine.js';
+import {
+  BOT_COMMANDS,
+  BOT_DESCRIPTION,
+  BOT_SHORT_DESCRIPTION,
+  syncBotVisualProfileOnDeploy,
+} from './botProfile.js';
 import { LocalBotStore } from './botStore.js';
 import type { InlineKeyboardMarkup } from './messages.js';
 
@@ -95,8 +101,8 @@ function createMockTransport(options?: {
   };
 }
 
-test('ASCII 1. Scene catalog has >= 30 unique scenarios with valid 32x11 geometry and exact final splash', () => {
-  assert.ok(ASCII_SCENES.length >= 30, `Expected >= 30 scenes, got ${ASCII_SCENES.length}`);
+test('ASCII 1. Scene catalog has >= 34 unique scenarios with valid 32x11 geometry and exact final splash', () => {
+  assert.ok(ASCII_SCENES.length >= 34, `Expected >= 34 scenes, got ${ASCII_SCENES.length}`);
   const ids = new Set(ASCII_SCENES.map((s) => s.id));
   assert.equal(ids.size, ASCII_SCENES.length, 'Scene IDs must be unique');
 
@@ -106,7 +112,7 @@ test('ASCII 1. Scene catalog has >= 30 unique scenarios with valid 32x11 geometr
   for (const scene of ASCII_SCENES) {
     assert.ok(scene.title.length > 0);
     assert.ok(scene.description.length > 0);
-    assert.ok(scene.frameDelayMs >= 900 && scene.frameDelayMs <= 1200);
+    assert.ok(scene.frameDelayMs >= 800 && scene.frameDelayMs <= 1200);
     assert.ok(scene.participants.length >= 2);
 
     for (const side of ['left', 'right'] as const) {
@@ -132,7 +138,6 @@ test('ASCII 1. Scene catalog has >= 30 unique scenarios with valid 32x11 geometr
     }
   }
 
-  // Verify Game Over scene geometry too
   const goFrames = renderAsciiSceneFrames(ASCII_GAMEOVER_SCENE, {
     winnerSide: 'left',
     winnerName: 'Кирилл',
@@ -144,7 +149,7 @@ test('ASCII 1. Scene catalog has >= 30 unique scenarios with valid 32x11 geometr
   }
 });
 
-test('ASCII 2. HTML <pre> escaping and directional mirroring keep tags readable and prevent raw < or > bugs', () => {
+test('ASCII 2. HTML <pre> escaping and directional mirroring keep tags readable', () => {
   const sampleFrame = '<===> O & O <===>';
   const html = wrapPreHtml(sampleFrame);
   assert.equal(html, '<pre>&lt;===&gt; O &amp; O &lt;===&gt;</pre>');
@@ -161,16 +166,12 @@ test('ASCII 2. HTML <pre> escaping and directional mirroring keep tags readable 
     loserName: 'Денис',
   });
 
-  // Labels like "БОЙ!" and "Кирилл*" must stay un-mirrored on both sides
   assert.match(leftFrames[0], /БОЙ!/);
   assert.match(rightFrames[0], /БОЙ!/);
   assert.match(leftFrames[0], /Кирилл\*/);
   assert.match(rightFrames[0], /Кирилл\*/);
-
-  // Direction of punch/action must differ between left-winner and right-winner
   assert.notEqual(leftFrames[1], rightFrames[1]);
 
-  // Every readable word in ALL 30 mirrored right-winner scenes must stay un-reversed
   for (const scene of ASCII_SCENES) {
     const fL = renderAsciiSceneFrames(scene, { winnerSide: 'left', winnerName: 'Кирилл', loserName: 'Денис' });
     const fR = renderAsciiSceneFrames(scene, { winnerSide: 'right', winnerName: 'Кирилл', loserName: 'Денис' });
@@ -189,17 +190,16 @@ test('ASCII 3. Random scene selector never repeats the immediately previous scen
   const second = pickRandomAsciiScene([first.id], () => 0);
   assert.notEqual(second.id, first.id, 'Should never repeat the last played scene');
 
-  // Even when all scenes except one were played recently, picks the unplayed one
   const allExceptLast = ASCII_SCENES.slice(0, -1).map((s) => s.id);
   const picked = pickRandomAsciiScene(allExceptLast, () => 0.5);
   assert.equal(picked.id, ASCII_SCENES.at(-1)!.id);
 });
 
-test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /miss -> sequential editMessageText <pre> -> delete -> permanent shame -> confirm -> ASCII GAME OVER', async () => {
+test('Bot 4. End-to-end minimalist Telegram flow: pair -> /miss -> ASCII -> confirm -> /callback -> /stats -> /scenes preview -> GAME OVER', async () => {
   const store = new LocalBotStore(null);
   const { calls, sleeps, transport, sleep } = createMockTransport();
 
-  const deps = { store, transport, frameDelayMs: 950, finalFrameHoldMs: 1200, sleep };
+  const deps = { store, transport, frameDelayMs: 900, finalFrameHoldMs: 1200, sleep };
 
   const user1 = { id: 10001, first_name: 'Кирилл', username: 'kirill_tg' };
   const user2 = { id: 20002, first_name: 'Денис', username: 'denis_tg' };
@@ -244,7 +244,6 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
     deps
   );
 
-  // Outsider blocked
   await processTelegramUpdate(
     {
       update_id: 4,
@@ -285,7 +284,26 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
     deps
   );
 
-  // User 1 presses "🥊 ОН НЕ ПОДНЯЛ ТЕЛЕФОН"
+  // In-place menu navigation check (act:score edits message 15 in place)
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 61,
+      callback_query: {
+        id: 'cb-score-inplace',
+        from: user1,
+        data: 'act:score',
+        message: { message_id: 15, chat: { id: -100555, type: 'supergroup' } },
+      },
+    },
+    deps
+  );
+  assert.ok(
+    calls.some((c) => c.type === 'editMessageText' && c.messageId === 15 && c.text?.includes('СЧЁТ РАУНДА')),
+    'Menu navigation should edit message in-place for clean minimalist chat'
+  );
+
+  // User 1 presses "Он не поднял трубку"
   calls.length = 0;
   sleeps.length = 0;
   const missUpdate: TelegramUpdate = {
@@ -299,12 +317,10 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
   };
   await processTelegramUpdate(missUpdate, deps);
 
-  // Verify sequence: answerCallbackQuery -> sendMessage(<pre>) -> editMessageText(<pre>) x7 -> deleteMessage -> sendMessage (permanent shame)
   assert.equal(calls[0].type, 'answerCallbackQuery');
 
-  const initialAscii = calls.find((c) => c.type === 'sendMessage' && c.parseMode === 'HTML');
+  const initialAscii = calls.find((c) => c.type === 'sendMessage' && c.parseMode === 'HTML' && c.text?.startsWith('<pre>'));
   assert.ok(initialAscii, 'Should send initial HTML <pre> frame');
-  assert.ok(initialAscii.text?.startsWith('<pre>') && initialAscii.text?.endsWith('</pre>'));
 
   const edits = calls.filter(
     (c) => c.type === 'editMessageText' && c.messageId === initialAscii.messageId
@@ -312,22 +328,19 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
   assert.equal(edits.length, 7, 'Should edit the exact same message 7 times (8 frames total)');
   assert.ok(edits.every((e) => e.parseMode === 'HTML' && e.text?.startsWith('<pre>')));
   assert.ok(edits.at(-1)!.text!.includes('F A T A L I T Y !'));
-
-  assert.deepEqual(sleeps, [950, 950, 950, 950, 950, 950, 950, 1200]);
+  assert.deepEqual(sleeps, [900, 900, 900, 900, 900, 900, 900, 1200]);
 
   const delCall = calls.find((c) => c.type === 'deleteMessage');
   assert.ok(delCall);
   assert.equal(delCall.messageId, initialAscii.messageId);
 
   const shameCall = calls.find(
-    (c) => c.type === 'sendMessage' && c.text?.includes('🚨 ПОЗОРНОЕ СОБЫТИЕ!')
+    (c) => c.type === 'sendMessage' && c.text?.includes('ПРОПУЩЕННЫЙ ЗВОНОК')
   );
   assert.ok(shameCall);
-  assert.match(shameCall.text!, /📵 ТЫ НЕ ПОДНЯЛ ТЕЛЕФОН!/);
-  assert.match(shameCall.text!, /Твой друг только что устроил тебе настоящий хаос\./);
-  assert.match(shameCall.text!, /\+1 пропуск\./);
-  assert.match(shameCall.text!, /До позорного финала осталось 9 шагов\./);
-  assert.match(shameCall.text!, /🏆 ПРИДУРОК, КОТОРЫЙ НЕ ПОДНЯЛ ТЕЛЕФОН\./);
+  assert.equal(shameCall.parseMode, 'HTML');
+  assert.match(shameCall.text!, /Кирилл → Денис · \+1 шаг/);
+  assert.match(shameCall.text!, /До титула осталось шагов:/);
 
   // Duplicate webhook retry ignored
   const prevLen = calls.length;
@@ -335,17 +348,61 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
   assert.equal(dupRes.deduplicated, true);
   assert.equal(calls.length, prevLen);
 
-  // Check recent_scenes updated so next miss plays a different scene
+  // Test /callback and /stats
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 71,
+      message: {
+        message_id: 17,
+        from: user2,
+        chat: { id: -100555, type: 'supergroup' },
+        text: '/callback',
+      },
+    },
+    deps
+  );
+  assert.ok(calls.some((c) => c.type === 'sendMessage' && c.text?.includes('ПЕРЕЗВОН ЗАФИКСИРОВАН')));
+
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 72,
+      message: {
+        message_id: 18,
+        from: user1,
+        chat: { id: -100555, type: 'supergroup' },
+        text: '/stats',
+      },
+    },
+    deps
+  );
+  assert.ok(calls.some((c) => c.type === 'sendMessage' && c.text?.includes('СВОДКА ДУЭЛИ')));
+
+  // Test /scenes preview mode (does not alter score)
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 73,
+      message: {
+        message_id: 19,
+        from: user1,
+        chat: { id: -100555, type: 'supergroup' },
+        text: '/scenes',
+      },
+    },
+    deps
+  );
+  assert.ok(calls.some((c) => c.type === 'sendMessage' && c.text?.includes('счёт раунда не изменён')));
+
+  // Confirm 3 events at threshold=3 -> triggers GAME OVER
   const p1Profile = await store.upsertTelegramUser({
     telegramId: '10001',
     displayName: 'Кирилл',
     username: 'kirill_tg',
   });
   let ctx = await store.getPairContextForUser(p1Profile.id);
-  assert.equal(ctx.pair?.recent_scenes?.length, 1);
   const firstSceneId = ctx.pair!.recent_scenes![0];
-
-  // Confirm 3 events at threshold=3 -> triggers ASCII GAME OVER sequence
   await store.updateSettings({ userId: p1Profile.id, pairId: ctx.pair!.id, finishThreshold: 3 });
 
   const ev1Id = shameCall.replyMarkup!.inline_keyboard[0][0].callback_data!.split(':')[1];
@@ -362,7 +419,6 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
     deps
   );
 
-  // Event #2 & #3 (User 2 accuses User 1 once? No, keep User 1 accusing User 2 to hit 3/3)
   for (let step = 2; step <= 3; step++) {
     calls.length = 0;
     await processTelegramUpdate(
@@ -377,7 +433,7 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
       },
       deps
     );
-    const card = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('🚨 ПОЗОРНОЕ СОБЫТИЕ!'))!;
+    const card = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('ПРОПУЩЕННЫЙ ЗВОНОК'))!;
     const evId = card.replyMarkup!.inline_keyboard[0][0].callback_data!.split(':')[1];
 
     calls.length = 0;
@@ -397,18 +453,17 @@ test('Bot 4. End-to-end Telegram ASCII Chaos flow: register -> pair -> group /mi
 
   ctx = await store.getPairContextForUser(p1Profile.id);
   assert.equal(ctx.pair!.recent_scenes!.length, 3);
-  assert.notEqual(ctx.pair!.recent_scenes![1], ctx.pair!.recent_scenes![2]);
   assert.ok(ctx.pair!.recent_scenes!.includes(firstSceneId));
 
-  const goAnimStart = calls.find((c) => c.type === 'sendMessage' && c.parseMode === 'HTML');
+  const goAnimStart = calls.find((c) => c.type === 'sendMessage' && c.parseMode === 'HTML' && c.text?.startsWith('<pre>'));
   const goEdits = calls.filter(
     (c) => c.type === 'editMessageText' && c.messageId === goAnimStart?.messageId
   );
-  const goMsg = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('GAME OVER!'));
+  const goMsg = calls.find((c) => c.type === 'sendMessage' && c.text?.includes('<b>GAME OVER</b>'));
   assert.ok(goAnimStart, 'Should send ASCII GAME OVER animation');
   assert.equal(goEdits.length, 7, 'Should animate all 8 frames of GAME OVER ASCII finale');
   assert.ok(goMsg);
-  assert.match(goMsg.text!, /🏆 «ПРИДУРОК, КОТОРЫЙ НЕ ПОДНЯЛ ТЕЛЕФОН»\./);
+  assert.match(goMsg.text!, /ПРИДУРОК, КОТОРЫЙ НЕ ПОДНЯЛ ТЕЛЕФОН/);
 });
 
 test('Bot 5. Resilience: handles 429 retry_after, "message is not modified", and deleteMessage failure in DM mode', async () => {
@@ -418,7 +473,7 @@ test('Bot 5. Resilience: handles 429 retry_after, "message is not modified", and
     simulateRateLimitOnce: true,
     simulateNotModifiedOnce: true,
   });
-  const deps = { store, transport, frameDelayMs: 950, finalFrameHoldMs: 1000, sleep };
+  const deps = { store, transport, frameDelayMs: 900, finalFrameHoldMs: 1000, sleep };
 
   const u1 = { id: 501, first_name: 'Аня' };
   const p1 = await store.upsertTelegramUser({
@@ -444,16 +499,106 @@ test('Bot 5. Resilience: handles 429 retry_after, "message is not modified", and
     deps
   );
 
-  // Should have paused once for retry_after (1000ms) in addition to frame sleeps
   assert.ok(sleeps.includes(1000), 'Should wait on Telegram 429 retry_after');
 
-  // Even though deleteMessage failed, permanent shame message MUST reach Макс (502)
   const dmShame = calls.find(
-    (c) => c.type === 'sendMessage' && String(c.chatId) === '502' && c.text?.includes('🚨 ПОЗОРНОЕ СОБЫТИЕ!')
+    (c) => c.type === 'sendMessage' && String(c.chatId) === '502' && c.text?.includes('ПРОПУЩЕННЫЙ ЗВОНОК')
   );
   assert.ok(dmShame, 'Final shame message must be delivered when deleteMessage fails');
-
-  // Both actor (501) and recipient (502) received HTML <pre> frames
-  assert.ok(calls.some((c) => c.type === 'sendMessage' && String(c.chatId) === '501' && c.parseMode === 'HTML'));
-  assert.ok(calls.some((c) => c.type === 'sendMessage' && String(c.chatId) === '502' && c.parseMode === 'HTML'));
 });
+
+test('Bot 6. Deploy-only visual profile sync uploads avatar photo and minimalist descriptions', async () => {
+  const calls: Array<{ method: string; value?: unknown }> = [];
+  const res = await syncBotVisualProfileOnDeploy({
+    async setMyCommands(commands) {
+      calls.push({ method: 'setMyCommands', value: commands });
+      return { ok: true, result: true };
+    },
+    async setMyDescription(description) {
+      calls.push({ method: 'setMyDescription', value: description });
+      return { ok: true, result: true };
+    },
+    async setMyShortDescription(shortDescription) {
+      calls.push({ method: 'setMyShortDescription', value: shortDescription });
+      return { ok: true, result: true };
+    },
+    async setMyProfilePhoto(photoBuffer, filename) {
+      calls.push({ method: 'setMyProfilePhoto', value: { size: photoBuffer.length, filename } });
+      return { ok: true, result: true };
+    },
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.avatarFound, true);
+  assert.ok(BOT_SHORT_DESCRIPTION.length <= 120);
+  assert.ok(BOT_DESCRIPTION.length <= 512);
+  assert.equal(calls.find((c) => c.method === 'setMyCommands')?.value, BOT_COMMANDS);
+  assert.equal(calls.find((c) => c.method === 'setMyDescription')?.value, BOT_DESCRIPTION);
+  assert.equal(calls.find((c) => c.method === 'setMyShortDescription')?.value, BOT_SHORT_DESCRIPTION);
+  const photoCall = calls.find((c) => c.method === 'setMyProfilePhoto')?.value as { size: number; filename: string };
+  assert.ok(photoCall && photoCall.size > 1000, 'Avatar buffer must be non-empty');
+});
+
+test('Bot 7. Play-on-Demand in DM mode: holds animation as unopened envelope until friend taps Открыть сцену', async () => {
+  const store = new LocalBotStore(null);
+  const { calls, transport, sleep } = createMockTransport();
+  const deps = { store, transport, frameDelayMs: 900, finalFrameHoldMs: 1200, sleep };
+
+  const u1 = { id: 601, first_name: 'Кирилл' };
+  const u2 = { id: 602, first_name: 'Денис' };
+  const p1 = await store.upsertTelegramUser({ telegramId: '601', privateChatId: '601', displayName: 'Кирилл', username: null });
+  const p2 = await store.upsertTelegramUser({ telegramId: '602', privateChatId: '602', displayName: 'Денис', username: null });
+  const pair = await store.createPair(p1.id);
+  await store.joinPairByCode(p2.id, pair.invitation_code);
+
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 9501,
+      message: { message_id: 10, from: u1, chat: { id: 601, type: 'private' }, text: '/miss' },
+    },
+    deps
+  );
+
+  // Caller (601) sees animation immediately; friend (602) receives unopened envelope without wasted animation frames
+  const animToFriendBeforeOpen = calls.filter(
+    (c) => String(c.chatId) === '602' && c.text?.startsWith('<pre>')
+  );
+  assert.equal(animToFriendBeforeOpen.length, 0, 'Must NOT play animation in friend DM before they open it');
+
+  const envelope = calls.find(
+    (c) => String(c.chatId) === '602' && c.text?.includes('ждёт открытия')
+  );
+  assert.ok(envelope, 'Friend DM must receive unopened scene envelope');
+  const openBtn = envelope.replyMarkup?.inline_keyboard[0][0];
+  assert.equal(openBtn?.text, 'Открыть сцену');
+  assert.ok(openBtn?.callback_data?.startsWith('replay:'));
+
+  // Later, friend opens Telegram and taps "Открыть сцену"
+  calls.length = 0;
+  await processTelegramUpdate(
+    {
+      update_id: 9502,
+      callback_query: {
+        id: 'cb-open-scene',
+        from: u2,
+        data: openBtn!.callback_data!,
+        message: { message_id: Number(envelope.messageId), chat: { id: 602, type: 'private' } },
+      },
+    },
+    deps
+  );
+
+  const frameEdits = calls.filter(
+    (c) => c.type === 'editMessageText' && c.messageId === envelope.messageId && c.text?.startsWith('<pre>')
+  );
+  assert.equal(frameEdits.length, 8, 'Opening envelope must play all 8 ASCII frames in-place');
+
+  const restoredCard = calls.at(-1);
+  assert.equal(restoredCard?.type, 'editMessageText');
+  assert.equal(restoredCard?.messageId, envelope.messageId);
+  assert.match(restoredCard?.text || '', /ПРОПУЩЕННЫЙ ЗВОНОК/);
+  assert.equal(restoredCard?.replyMarkup?.inline_keyboard[0][0].text, 'Признаю');
+  assert.equal(restoredCard?.replyMarkup?.inline_keyboard[1][0].text, 'Повторить сцену');
+});
+

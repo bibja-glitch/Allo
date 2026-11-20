@@ -19,14 +19,13 @@ function compileDirectionalScene(
 }
 
 export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
-  // 16. Falling Wardrobe
   {
     id: 'falling_wardrobe',
-    title: '🗄️ Падающий шкаф',
+    title: 'Падающий шкаф',
     type: 'absurd',
     description: 'Прямо сверху на игнорщика приземляется дубовый шкаф.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'wardrobe'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -84,7 +83,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '________________________________',
             ],
             labels: [
-              { row: 1, text: '* B A M ! *', align: 'center' },
+              { row: 1, text: '* Б А М ! *', align: 'center' },
               { row: 3, col: 23, flipCol: true, text: '|ШКАФ!!|' },
             ],
           },
@@ -140,14 +139,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 17. Robot Uprising
   {
     id: 'robot_uprising',
-    title: '🤖 Восстание роботов',
+    title: 'Восстание роботов',
     type: 'sci_fi',
     description: 'Отряд боевых роботов с лазерами окружает не отвечающего на звонок.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'robots'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -243,14 +241,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 18. Giant Snowball
   {
     id: 'giant_snowball',
-    title: '❄️ Снежный ком',
+    title: 'Снежный ком',
     type: 'disaster',
     description: 'Маленький снежок превращается в огромную лавину и закатывает врага.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'snowball'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -346,14 +343,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 19. Alien Tentacles
   {
     id: 'alien_tentacles',
-    title: '🐙 Инопланетные щупальца',
+    title: 'Инопланетные щупальца',
     type: 'sci_fi',
     description: 'Из портала вылезают щупальца и утаскивают не взявшего трубку.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'monster'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -449,14 +445,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 20. Volcano Eruption
   {
     id: 'volcano_eruption',
-    title: '🌋 Извержение вулкана',
+    title: 'Извержение вулкана',
     type: 'disaster',
     description: 'Под вторым игроком вырастает вулкан и запускает его в стратосферу.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'volcano'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -552,14 +547,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 21. Giant Spider
   {
     id: 'giant_spider',
-    title: '🕷️ Нападение гигантского паука',
+    title: 'Гигантский паук',
     type: 'animal',
     description: 'Гигантский паук спускается на паутине сверху и заматывает игрока в кокон.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'spider'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -646,7 +640,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                           ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'ПАУЧИЙ КО', align: 'winner' }],
+            labels: [{ row: 1, text: 'ПАУЧИЙ НОКАУТ', align: 'winner' }],
           },
         ],
         winnerSide,
@@ -655,14 +649,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 22. Cliff Fall
   {
     id: 'cliff_fall',
-    title: '🏔️ Падение с горы',
+    title: 'Падение со скалы',
     type: 'duel',
-    description: 'ЭТО СПАРТА! Победитель сталкивает игнорщика со скалы.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    description: 'Победитель сталкивает игнорщика со скалы.',
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -765,14 +758,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 23. Pirate Cannon Broadside
   {
     id: 'pirate_broadside',
-    title: '🏴‍☠️ Пиратский залп из пушки',
+    title: 'Пиратский залп',
     type: 'absurd',
     description: 'Победитель заряжает пушку и запускает ядро прямо в не взявшего трубку.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'cannon'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -859,7 +851,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\ (o-o)               ~ ~ ~ ',
               '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
             ],
-            labels: [{ row: 1, text: 'ПИРАТСКИЙ КО!', align: 'winner' }],
+            labels: [{ row: 1, text: 'ПИРАТСКИЙ ЗАЛП!', align: 'winner' }],
           },
         ],
         winnerSide,
@@ -868,14 +860,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 24. Giant Ghost Scare
   {
     id: 'giant_ghost',
-    title: '👻 Огромное привидение',
+    title: 'Огромное привидение',
     type: 'magic',
     description: 'Гигантское привидение пугает игрока до обморока.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'ghost'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -962,7 +953,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                  __xOx__  ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'ПРИЗРАЧНЫЙ КО!', align: 'winner' }],
+            labels: [{ row: 1, text: 'ПРИЗРАЧНЫЙ УДАР!', align: 'winner' }],
           },
         ],
         winnerSide,
@@ -971,14 +962,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 25. Rocket Crash
   {
     id: 'rocket_crash',
-    title: '🚀 Падение ракеты',
+    title: 'Падение ракеты',
     type: 'transport',
     description: 'Неуправляемая ракета падает по диагонали и взрывает игнорщика.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'rocket'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1017,7 +1007,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                      / \\  ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'СОС!!', align: 'center' }],
+            labels: [{ row: 1, text: 'ТРЕВОГА!!', align: 'center' }],
           },
           {
             art: [
@@ -1065,7 +1055,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                 __X__     ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'РАКЕТНЫЙ КО', align: 'winner' }],
+            labels: [{ row: 1, text: 'РАКЕТНЫЙ УДАР', align: 'winner' }],
           },
         ],
         winnerSide,
@@ -1074,14 +1064,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 26. Falling Piano
   {
     id: 'falling_piano',
-    title: '🎹 Падающий рояль',
+    title: 'Падающий рояль',
     type: 'absurd',
     description: 'Классический мультяшный рояль падает с крыши прямо на голову.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'piano'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1135,7 +1124,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                  |_|_|_|  ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: '* B A N G ! *', align: 'center' }],
+            labels: [{ row: 1, text: '* Т Р А Х ! *', align: 'center' }],
           },
           {
             art: [
@@ -1147,7 +1136,7 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '  / \\                  \\O/ |    ',
               '________________________________',
             ],
-            labels: [{ row: 1, text: 'МУЗЫКАЛЬНЫЙ КО!', align: 'center' }],
+            labels: [{ row: 1, text: 'МУЗЫКАЛЬНЫЙ НОКАУТ!', align: 'center' }],
           },
           {
             art: [
@@ -1183,14 +1172,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 27. Laser Cat
   {
     id: 'laser_cat',
-    title: '🐱 Кот с лазерами из глаз',
+    title: 'Кот с лазерами',
     type: 'animal',
     description: 'Гигантский кот стреляет лазерными лучами из глаз и испепеляет цель.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'cat'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1286,14 +1274,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 28. Cactus & Tumbleweed
   {
     id: 'cactus_tumbleweed',
-    title: '🌵 Дуэль на Диком Западе',
+    title: 'Дуэль на Западе',
     type: 'duel',
     description: 'Перекати-поле пролетает между игроками, и быстрый ковбой стреляет первым.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1389,14 +1376,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 29. Disco Fever
   {
     id: 'disco_fever',
-    title: '🪩 Смертельное диско',
+    title: 'Смертельное диско',
     type: 'absurd',
     description: 'Диско-шар ослепляет игрока стробоскопами, и он проигрывает танц-баттл.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1492,14 +1478,13 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
       ),
   },
 
-  // 30. Rogue Vacuum Cleaner
   {
     id: 'rogue_vacuum',
-    title: '🧹 Безумный пылесос',
+    title: 'Безумный пылесос',
     type: 'absurd',
     description: 'Гигантский пылесос включается на турбо-режим и засасывает игнорщика.',
-    frameDelayMs: 950,
-    durationMs: 950 * 8,
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
     participants: ['winner', 'loser', 'vacuum'],
     buildFrames: ({ winnerSide, winnerName, loserName }) =>
       compileDirectionalScene(
@@ -1605,9 +1590,420 @@ export const ASCII_SCENES_PART_2: AsciiSceneDefinition[] = [
               '________________________________',
             ],
             labels: [
-              { row: 1, text: 'ПЫЛЕСОС-КО!', align: 'winner' },
+              { row: 1, text: 'ПЫЛЕСОС-НОКАУТ', align: 'winner' },
               { row: 3, col: 6, flipCol: true, text: '[ПЫЛ]' },
             ],
+          },
+        ],
+        winnerSide,
+        winnerName,
+        loserName
+      ),
+  },
+
+  // 31. Do Not Disturb Lock (New)
+  {
+    id: 'dnd_lock',
+    title: 'Режим «Не беспокоить»',
+    type: 'absurd',
+    description: 'Тяжёлый стальной замок падает на игнорщика за беззвучный режим.',
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
+    participants: ['winner', 'loser'],
+    buildFrames: ({ winnerSide, winnerName, loserName }) =>
+      compileDirectionalScene(
+        [
+          {
+            art: [
+              '',
+              '',
+              '                        .---.   ',
+              '   O                   /     \\  ',
+              '  /|\\                  |  O  |  ',
+              '  / \\                  | /|\\ |  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'БЕЗ ЗВУКА?', align: 'winner' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       .-----.  ',
+              '   O                   |  o  |  ',
+              '  /|\\                  |_____|  ',
+              '  / \\                     O!    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ПАДАЕТ ЗАМОК!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '   O                   .-----.  ',
+              '  /|\\                  |[===]|  ',
+              '  / \\                  |\\O/__|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: '* КЛАЦ! *', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       *  *  *  ',
+              '   O                   .-----.  ',
+              '  /|\\                 *|[ # ]|* ',
+              '  / \\                  |_____|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ЗАБЛОКИРОВАН!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                  .-----.  ',
+              '   |                   |[###]|  ',
+              '  / \\                  |_____|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'НЕТ ДОСТУПА', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                  .-----.  ',
+              '   |      ~ ~          |[ x ]|  ',
+              '  / \\                  |_____|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'РЕЖИМ ТИШИНЫ', align: 'winner' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                  .-----.  ',
+              '   |                   |[   ]|  ',
+              '  / \\                  |__x__|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ЗАКРЫТО!', align: 'winner' }],
+          },
+        ],
+        winnerSide,
+        winnerName,
+        loserName
+      ),
+  },
+
+  // 32. Orbital Satellite Laser (New)
+  {
+    id: 'orbital_laser',
+    title: 'Орбитальный удар',
+    type: 'sci_fi',
+    description: 'Спутник связи находит абонента и посылает точный импульс с орбиты.',
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
+    participants: ['winner', 'loser', 'satellite'],
+    buildFrames: ({ winnerSide, winnerName, loserName }) =>
+      compileDirectionalScene(
+        [
+          {
+            art: [
+              '',
+              '',
+              '                     =[===]=    ',
+              '   O                    v   O   ',
+              '  /|\\                      /|\\  ',
+              '  / \\                      / \\  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ПОИСК СИГНАЛА...', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      =[===]=   ',
+              '   O                     |  O   ',
+              '  /|\\                    : /|\\  ',
+              '  / \\                      / \\  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'АБОНЕНТ НАЙДЕН', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       =[===]=  ',
+              '   O                      |     ',
+              '  /|\\                     | O!  ',
+              '  / \\                     |/ \\  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'НАВЕДЕНИЕ...', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       =[===]=  ',
+              '   O                     |||    ',
+              '  /|\\                    |||\\O/ ',
+              '  / \\                    |||/|  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ЗАРЯД 100%!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       =[===]=  ',
+              '   O                    *|||*   ',
+              '  /|\\                  * #X# *  ',
+              '  / \\                    / \\    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: '* ИМПУЛЬС! *', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       =[===]=  ',
+              '  \\O/                    ~ ~    ',
+              '   |                     * *    ',
+              '  / \\                  __xOx__  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'СВЯЗЬ ВОССТАНОВЛЕНА', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       =[===]=  ',
+              '  \\O/                           ',
+              '   |                            ',
+              '  / \\                  __xOx__  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ОРБИТАЛЬНЫЙ НОКАУТ', align: 'winner' }],
+          },
+        ],
+        winnerSide,
+        winnerName,
+        loserName
+      ),
+  },
+
+  // 33. Coffee Mug Trap (New)
+  {
+    id: 'coffee_mug_trap',
+    title: 'Перерыв на кофе',
+    type: 'absurd',
+    description: 'Гигантская кружка кофе накрывает того, кто снова проигнорировал вызов.',
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
+    participants: ['winner', 'loser'],
+    buildFrames: ({ winnerSide, winnerName, loserName }) =>
+      compileDirectionalScene(
+        [
+          {
+            art: [
+              '',
+              '',
+              '   O                        O   ',
+              '  /|\\                      /|\\  ',
+              '  / \\                      / \\  ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ПОРА ПРОСНУТЬСЯ', align: 'winner' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      (~~~~)    ',
+              '   O                  |    |]   ',
+              '  /|\\                 |____|    ',
+              '  / \\                      O!   ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ДВОЙНОЙ ЭСПРЕССО!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '   O                  |~~~~|]   ',
+              '  /|\\                 |    |    ',
+              '  / \\                 |\\O/_|    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: '* ХЛЮП! *', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      ~  ~  ~   ',
+              '   O                  |====|]   ',
+              '  /|\\                 | *O*|    ',
+              '  / \\                 |____|    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'НАКРЫЛО!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                       ~  ~     ',
+              '  \\O/                 |====|]   ',
+              '   |                  |    |    ',
+              '  / \\                 |____|    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'БОДРОСТЬ!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                 [====]]   ',
+              '   |      * *         |    |    ',
+              '  / \\                 |____|    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'КОФЕ-БРЕЙК!', align: 'winner' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                 [====]]   ',
+              '   |                  | .. |    ',
+              '  / \\                 |____|    ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ПРОСНУЛСЯ?', align: 'winner' }],
+          },
+        ],
+        winnerSide,
+        winnerName,
+        loserName
+      ),
+  },
+
+  // 34. Lightning Bolt (New)
+  {
+    id: 'lightning_bolt',
+    title: 'Разряд молнии',
+    type: 'disaster',
+    description: 'Над игнорщиком сгущается туча и бьёт точный электрический разряд.',
+    frameDelayMs: 900,
+    durationMs: 900 * 8,
+    participants: ['winner', 'loser'],
+    buildFrames: ({ winnerSide, winnerName, loserName }) =>
+      compileDirectionalScene(
+        [
+          {
+            art: [
+              '',
+              '',
+              '                      (~~~~)    ',
+              '   O                 (~~~~~~)O  ',
+              '  /|\\                       /|\\ ',
+              '  / \\                       / \\ ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ГРОЗА ИДЁТ...', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      (####)    ',
+              '   O                 (######)O! ',
+              '  /|\\                  /    /|\\ ',
+              '  / \\                       / \\ ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ИСКРИТ!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      (####)    ',
+              '   O                 (######)   ',
+              '  /|\\                   /\\ \\O/  ',
+              '  / \\                    \\  |   ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ЗАРЯД...', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      (####)    ',
+              '   O                    /       ',
+              '  /|\\                  /\\*!*\\O/ ',
+              '  / \\                   / * |   ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: '* Т Р Е С К ! *', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '                      (~~~~)    ',
+              '   O                    * *     ',
+              '  /|\\                 * #X# *   ',
+              '  / \\                   / \\     ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: '220 ВОЛЬТ!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                   ~ ~     ',
+              '   |                  *  *  *   ',
+              '  / \\                 __xOx__   ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'ОГЛУШЁН!', align: 'center' }],
+          },
+          {
+            art: [
+              '',
+              '',
+              '',
+              '  \\O/                           ',
+              '   |                            ',
+              '  / \\                 __xOx__   ',
+              '________________________________',
+            ],
+            labels: [{ row: 1, text: 'РАЗРЯД ПОПАЛ!', align: 'winner' }],
           },
         ],
         winnerSide,

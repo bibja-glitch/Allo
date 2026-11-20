@@ -87,7 +87,6 @@ test('6. Prevents duplicate events via idempotency key and enforces cooldown', (
     },
   ];
 
-  // Double-click with same idempotency_key deduplicates instead of creating 2nd event
   const dup = validateEventCreation({
     actorId: 'user-1',
     pair,
@@ -101,7 +100,6 @@ test('6. Prevents duplicate events via idempotency key and enforces cooldown', (
     assert.equal(dup.deduplicated, true);
   }
 
-  // New key within 120s cooldown is rejected
   const tooFast = validateEventCreation({
     actorId: 'user-1',
     pair,
@@ -116,7 +114,6 @@ test('6. Prevents duplicate events via idempotency key and enforces cooldown', (
     assert.equal(tooFast.retryAfterSeconds, 90);
   }
 
-  // Friend (user-2) can still log against user-1 independently
   const otherPlayer = validateEventCreation({
     actorId: 'user-2',
     pair,
@@ -147,7 +144,6 @@ test('7 & 8. Confirmation and dispute permissions & progress calculation', () =>
     idempotency_key: 'idem-10',
   };
 
-  // Author cannot confirm or dispute their own event on behalf of recipient
   const selfConfirm = validateEventTransition({
     event: pendingEv,
     userId: 'user-1',
@@ -164,7 +160,6 @@ test('7 & 8. Confirmation and dispute permissions & progress calculation', () =>
   });
   assert.equal(selfDispute.ok, false);
 
-  // Recipient can dispute -> excluded from confirmed progress
   const dispute = validateEventTransition({
     event: pendingEv,
     userId: 'user-2',
@@ -184,7 +179,6 @@ test('7 & 8. Confirmation and dispute permissions & progress calculation', () =>
   assert.equal(disputedProgress.confirmedSteps, 0);
   assert.equal(disputedProgress.disputedCount, 1);
 
-  // Recipient can confirm -> increments confirmed progress
   const confirmedProgress = computePlayerProgress({
     profile: p2,
     laneIndex: 1,

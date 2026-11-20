@@ -38,6 +38,7 @@ export interface Pair {
   last_animation_file?: string | null;
   recent_scenes?: string[] | null;
   round_started_at?: string | null;
+  fast_animation?: boolean;
   created_at: string;
 }
 

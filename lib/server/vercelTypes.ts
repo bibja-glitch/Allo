@@ -1,3 +1,4 @@
+/// <reference types="node" />
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export interface VercelRequest extends IncomingMessage {

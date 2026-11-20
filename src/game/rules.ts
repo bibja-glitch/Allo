@@ -26,13 +26,11 @@ export type HistoryPeriod = 'today' | '7d' | '30d' | 'all';
 export function buildEffectiveRanks(finishThreshold: number, customRanks?: RankTier[] | null): RankTier[] {
   const safeThreshold = Math.max(3, Math.min(50, Math.round(finishThreshold || 10)));
   if (customRanks && customRanks.length > 0) {
-    const sorted = [...customRanks].sort((a, b) => a.min_steps - b.min_steps);
-    return sorted;
+    return [...customRanks].sort((a, b) => a.min_steps - b.min_steps);
   }
   if (safeThreshold === 10) {
     return DEFAULT_RANKS;
   }
-  // Scale intermediate milestones proportionally when finishThreshold is customized
   return [
     { min_steps: 0, title: DEFAULT_RANKS[0].title },
     { min_steps: 1, title: DEFAULT_RANKS[1].title },
@@ -161,7 +159,6 @@ export function validateEventCreation(
     };
   }
 
-  // Deduplicate identical requests (e.g., double-tap or network retry)
   const duplicate = existingEvents.find(
     (e) => e.pair_id === pair.id && e.idempotency_key === idempotencyKey
   );
@@ -174,7 +171,6 @@ export function validateEventCreation(
     };
   }
 
-  // Enforce cooldown for missed_call events from same actor
   if (eventType === 'missed_call' && pair.cooldown_seconds > 0) {
     const actorMisses = existingEvents
       .filter(
@@ -372,8 +368,7 @@ export function filterEventsByPeriod(
   let cutoffMs = 0;
 
   if (period === 'today') {
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    cutoffMs = startOfDay;
+    cutoffMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   } else if (period === '7d') {
     cutoffMs = nowMs - 7 * 24 * 60 * 60 * 1000;
   } else if (period === '30d') {
@@ -429,7 +424,6 @@ export function computeStats(
       ? sortedByCallbacks[0].userId
       : null;
 
-  // Weekly leader = fewest missed calls this week (with tie-breaker on more callbacks)
   const sortedWeeklyLeader = [...weeklyBreakdown].sort((a, b) => {
     if (a.missedWeek !== b.missedWeek) return a.missedWeek - b.missedWeek;
     return b.callbacksWeek - a.callbacksWeek;

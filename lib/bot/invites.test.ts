@@ -9,8 +9,8 @@ async function user(store: LocalBotStore, tgId: string, name: string) {
 
 test('invite code normalization handles Cyrillic lookalikes, dashes and bare suffix', () => {
   assert.equal(normalizeInviteCode(' allo-7f3a '), 'ALLO-7F3A');
-  assert.equal(normalizeInviteCode('ALLO–7F3A'), 'ALLO-7F3A'); // длинное тире
-  assert.equal(normalizeInviteCode('ALLO-1АЕ2'), 'ALLO-1AE2'); // кириллические А и Е
+  assert.equal(normalizeInviteCode('ALLO–7F3A'), 'ALLO-7F3A');
+  assert.equal(normalizeInviteCode('ALLO-1АЕ2'), 'ALLO-1AE2');
   assert.equal(normalizeInviteCode('«ALLO-7F3A»'), 'ALLO-7F3A');
   assert.equal(normalizeInviteCode('7f3a'), 'ALLO-7F3A');
   assert.ok(looksLikeInviteCode('ALLO-7F3A'));
@@ -22,7 +22,7 @@ test('user with own empty waiting pair can still join a friend invite', async ()
   const a = await user(store, `ia-${Date.now()}1`, 'A');
   const b = await user(store, `ib-${Date.now()}2`, 'B');
   const pairA = await store.createPair(a.id, null);
-  const pairB = await store.createPair(b.id, null); // второй аккаунт тоже нажал «создать приглашение»
+  const pairB = await store.createPair(b.id, null);
   assert.notEqual(pairA.id, pairB.id);
 
   const joined = await store.joinPairByCode(b.id, pairA.invitation_code.toLowerCase(), null);
@@ -30,7 +30,6 @@ test('user with own empty waiting pair can still join a friend invite', async ()
   assert.equal(joined.status, 'active');
   const ctx = await store.getPairContextForUser(b.id);
   assert.equal(ctx.pair?.id, pairA.id);
-  // старый пустой код B больше не работает
   await assert.rejects(store.joinPairByCode(a.id, pairB.invitation_code, null), /не найден|уже состоишь/);
 });
 
@@ -47,7 +46,6 @@ test('own code, full pair and unknown code give clear errors', async () => {
   await store.joinPairByCode(b.id, pairA.invitation_code, null);
   await assert.rejects(store.joinPairByCode(c.id, pairA.invitation_code, null), /уже двое/);
 
-  // Активная пара не заменяется приглашением в другую
   const d = await user(store, `jd-${Date.now()}4`, 'D');
   const pairD = await store.createPair(d.id, null);
   await assert.rejects(store.joinPairByCode(b.id, pairD.invitation_code, null), /уже состоишь/);
@@ -59,9 +57,9 @@ test('failed join does not destroy the joiner own waiting pair', async () => {
   const b = await user(store, `kb-${Date.now()}2`, 'B');
   const c = await user(store, `kc-${Date.now()}3`, 'C');
   const pairA = await store.createPair(a.id, null);
-  await store.joinPairByCode(b.id, pairA.invitation_code, null); // пара A+B полная
+  await store.joinPairByCode(b.id, pairA.invitation_code, null);
   const pairC = await store.createPair(c.id, null);
   await assert.rejects(store.joinPairByCode(c.id, pairA.invitation_code, null), /уже двое/);
   const ctx = await store.getPairContextForUser(c.id);
-  assert.equal(ctx.pair?.id, pairC.id); // собственная пара C сохранилась
+  assert.equal(ctx.pair?.id, pairC.id);
 });

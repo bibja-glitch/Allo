@@ -1,6 +1,6 @@
 {
   "name": "АЛЛО, РОУД!",
-  "description": "16-битная пиксельная игра для двух друзей: каждый пропущенный звонок приближает виновника к финишу.",
+  "description": "Минималистичная игра в Telegram для двух друзей: каждый пропущенный звонок запускает ASCII-сцену и приближает к финалу.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

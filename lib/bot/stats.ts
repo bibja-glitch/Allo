@@ -70,15 +70,7 @@ export function computeGameStats(params: {
     }
   }
 
-  let weeklyLeaderUserId: string | null = null;
-  let maxWeekMiss = -1;
-  for (const [uid, count] of Object.entries(weeklyMissByUser)) {
-    if (count > maxWeekMiss) {
-      maxWeekMiss = count;
-      weeklyLeaderUserId = uid;
-    }
-  }
-
+  // Weekly leader = fewest missed calls this week (tie-breaker: more callbacks)
   const weeklyBreakdown = members.map((m: PairMember) => {
     const prof = profiles.find((p: Profile) => p.id === m.user_id);
     const prog = computePlayerProgress({
@@ -108,6 +100,17 @@ export function computeGameStats(params: {
       currentRankTitle: prog.currentRank.title,
     };
   });
+
+  const sortedWeekly = [...weeklyBreakdown].sort((a, b) => {
+    if (a.missedWeek !== b.missedWeek) return a.missedWeek - b.missedWeek;
+    return b.callbacksWeek - a.callbacksWeek;
+  });
+  const weeklyLeaderUserId =
+    sortedWeekly.length === 2 &&
+    (sortedWeekly[0].missedWeek !== sortedWeekly[1].missedWeek ||
+      sortedWeekly[0].callbacksWeek !== sortedWeekly[1].callbacksWeek)
+      ? sortedWeekly[0].userId
+      : null;
 
   return {
     totalConfirmedMisses,

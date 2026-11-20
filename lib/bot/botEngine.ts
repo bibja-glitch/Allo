@@ -3,32 +3,39 @@ import {
   validateEventCreation,
   validateEventTransition,
 } from '../../src/game/rules.js';
-import type { CallEvent, PlayerProgress } from '../../src/types/game.js';
+import type { PlayerProgress } from '../../src/types/game.js';
 import {
   ASCII_GAMEOVER_SCENE,
+  getAsciiSceneById,
   pickRandomAsciiScene,
   renderAsciiSceneFrames,
+  SCENE_TYPE_LABELS,
   type AsciiSceneDefinition,
 } from './asciiScenes.js';
-import { wrapPreHtml } from './asciiUtils.js';
+import { escapeHtml, wrapPreHtml } from './asciiUtils.js';
 import { getDefaultBotStore, type BotStore, type PairContext } from './botStore.js';
 import { looksLikeInviteCode } from './inviteCode.js';
 import {
+  buildBackToMenuKeyboard,
   buildDisputedEventKeyboard,
   buildEventReactionKeyboard,
   buildGameOverKeyboard,
   buildMainMenuKeyboard,
+  buildPendingEnvelopeKeyboard,
   buildSettingsKeyboard,
   buildUnpairedKeyboard,
   formatGameOverMessage,
   formatHistoryMessage,
   formatPermanentShameMessage,
-  formatScoreMessage,
   formatScoreboardLine,
+  formatScoreMessage,
   formatSettingsMessage,
+  formatStatsMessage,
+  formatUnopenedSceneEnvelopeMessage,
   formatWelcomeActiveMessage,
   type InlineKeyboardMarkup,
 } from './messages.js';
+import { computeGameStats } from './stats.js';
 import {
   tgAnswerCallbackQuery,
   tgDeleteMessage,
@@ -99,9 +106,7 @@ export interface TelegramTransport {
 export interface BotEngineDeps {
   store?: BotStore;
   transport?: TelegramTransport;
-  /** Override pause between ASCII frames in ms (defaults to scene.frameDelayMs, 950ms). */
   frameDelayMs?: number;
-  /** Override final FATALITY frame hold duration in ms (defaults to 1200ms). */
   finalFrameHoldMs?: number;
   sleep?: (ms: number) => Promise<void>;
   randomFn?: () => number;
@@ -168,16 +173,43 @@ export async function processTelegramUpdate(
   try {
     return await processClaimedUpdate(update, deps, store);
   } catch (err) {
-    // Снимаем метку «обработано», чтобы повторная доставка от Telegram не была отброшена как дубликат
     if (hasId && store.releaseWebhookUpdate) {
       try {
         await store.releaseWebhookUpdate(update.update_id);
       } catch {
-        // ignore: ошибку обработки важнее
+        // ignore
       }
     }
     throw err;
   }
+}
+
+async function editOrSendPanel(params: {
+  transport: TelegramTransport;
+  chatId: string;
+  messageId?: number;
+  text: string;
+  replyMarkup?: InlineKeyboardMarkup;
+}) {
+  const { transport, chatId, messageId, text, replyMarkup } = params;
+  if (messageId) {
+    const edited = await transport.editMessageText({
+      chatId,
+      messageId,
+      text,
+      parseMode: 'HTML',
+      replyMarkup,
+    });
+    if (edited.ok || (edited.description || '').toLowerCase().includes('message is not modified')) {
+      return edited;
+    }
+  }
+  return transport.sendMessage({
+    chatId,
+    text,
+    parseMode: 'HTML',
+    replyMarkup,
+  });
 }
 
 async function processClaimedUpdate(
@@ -190,7 +222,7 @@ async function processClaimedUpdate(
   const randomFn = deps.randomFn || Math.random;
 
   // -------------------------------------------------------------------------
-  // 1. Handle Inline Keyboard Callbacks
+  // 1. Inline Keyboard Callbacks
   // -------------------------------------------------------------------------
   if (update.callback_query) {
     const cb = update.callback_query;
@@ -211,24 +243,27 @@ async function processClaimedUpdate(
       if (ctx.pair) {
         await transport.answerCallbackQuery({
           callbackQueryId: cb.id,
-          text: `У тебя уже есть пара (код: ${ctx.pair.invitation_code})`,
+          text: `У вас уже есть пара (${ctx.pair.invitation_code})`,
         });
         return { ok: true, action: 'pair:already_exists' };
       }
       const pair = await store.createPair(profile.id, chat && isGroupChat(chat) ? chatId : null);
-      await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: 'Пара создана!' });
-      await transport.sendMessage({
+      await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: 'Пара создана' });
+      await editOrSendPanel({
+        transport,
         chatId,
+        messageId: cb.message?.message_id,
         text: [
-          '🎮 Игровая пара создана!',
+          '<b>ПАРА СОЗДАНА</b>',
           '',
-          `🔑 Код приглашения: ${pair.invitation_code}`,
+          `Код приглашения: <code>${escapeHtml(pair.invitation_code)}</code>`,
           '',
-          'Перешли этот код другу. Друг должен открыть бота и отправить:',
-          `/join ${pair.invitation_code}`,
-          '',
-          'Как только он подключится, на арене появятся два бойца!',
+          'Нажмите на код, чтобы скопировать, и отправьте другу.',
+          `Друг должен отправить боту: <code>/join ${escapeHtml(pair.invitation_code)}</code>`,
         ].join('\n'),
+        replyMarkup: {
+          inline_keyboard: [[{ text: 'Ввести код вместо создания', callback_data: 'pair:join_prompt' }]],
+        },
       });
       return { ok: true, action: 'pair:create' };
     }
@@ -237,7 +272,13 @@ async function processClaimedUpdate(
       await transport.answerCallbackQuery({ callbackQueryId: cb.id });
       await transport.sendMessage({
         chatId,
-        text: '🔗 Отправь код приглашения от друга в формате:\n/join ALLO-XXXX\n\nИли просто вставь код (например, ALLO-7F3A) сюда сообщением.',
+        parseMode: 'HTML',
+        text: [
+          '<b>ВХОД В ПАРУ</b>',
+          '',
+          'Отправьте код приглашения сообщением, например:',
+          '<code>/join ALLO-7F3A</code> или просто <code>ALLO-7F3A</code>',
+        ].join('\n'),
       });
       return { ok: true, action: 'pair:join_prompt' };
     }
@@ -257,26 +298,78 @@ async function processClaimedUpdate(
       });
     }
 
-    if (data === 'act:menu' || data === 'act:score' || data === 'act:history' || data === 'act:settings') {
+    if (data === 'act:callback') {
+      return await handleCallbackLogAction({
+        store,
+        transport,
+        actorId: profile.id,
+        sourceChatId: chatId,
+        callbackQueryId: cb.id,
+        messageId: cb.message?.message_id,
+        idempotencyKey: `tg_upd_${update.update_id}`,
+      });
+    }
+
+    if (data === 'act:preview') {
+      return await handleScenePreviewAction({
+        store,
+        transport,
+        actorId: profile.id,
+        sourceChatId: chatId,
+        callbackQueryId: cb.id,
+        frameDelayMs: deps.frameDelayMs,
+        finalFrameHoldMs: deps.finalFrameHoldMs,
+        sleep,
+        randomFn,
+      });
+    }
+
+    if (
+      data === 'act:menu' ||
+      data === 'act:score' ||
+      data === 'act:history' ||
+      data === 'act:stats' ||
+      data === 'act:settings'
+    ) {
       await transport.answerCallbackQuery({ callbackQueryId: cb.id });
       const ctx = await store.getPairContextForUser(profile.id);
       if (!ctx.pair || ctx.pair.status !== 'active') {
         await sendNeedsPairMessage(transport, chatId, ctx.pair?.invitation_code);
         return { ok: true, action: data };
       }
+      const msgId = cb.message?.message_id;
       if (data === 'act:menu') {
-        await sendMainMenu(transport, chatId, profile.id, ctx);
+        await sendMainMenu(transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:score') {
-        await sendScoreView(transport, chatId, profile.id, ctx);
+        await sendScoreView(transport, chatId, profile.id, ctx, msgId);
       } else if (data === 'act:history') {
-        await sendHistoryView(transport, chatId, ctx);
+        await sendHistoryView(transport, chatId, ctx, msgId);
+      } else if (data === 'act:stats') {
+        await sendStatsView(transport, chatId, ctx, msgId);
       } else if (data === 'act:settings') {
-        await sendSettingsView(transport, chatId, profile.id, ctx);
+        await sendSettingsView(transport, chatId, profile.id, ctx, msgId);
       }
       return { ok: true, action: data };
     }
 
-    // Confirm / Dispute / Cancel missed call event
+    if (data.startsWith('replay:')) {
+      const eventId = data.slice('replay:'.length).trim();
+      if (eventId) {
+        return await handleReplaySceneAction({
+          store,
+          transport,
+          cb,
+          userId: profile.id,
+          eventId,
+          fallbackChatId: chatId,
+          frameDelayMs: deps.frameDelayMs,
+          finalFrameHoldMs: deps.finalFrameHoldMs,
+          sleep,
+          randomFn,
+        });
+      }
+    }
+
     if (data.startsWith('confirm:') || data.startsWith('dispute:') || data.startsWith('cancel:')) {
       const [actionRaw, eventId] = data.split(':');
       if (
@@ -298,13 +391,12 @@ async function processClaimedUpdate(
       }
     }
 
-    // Settings updates
     if (data.startsWith('set:')) {
       const ctx = await store.getPairContextForUser(profile.id);
       if (!ctx.pair) {
         await transport.answerCallbackQuery({
           callbackQueryId: cb.id,
-          text: 'Сначала создай или прими приглашение в пару.',
+          text: 'Сначала создайте или примите приглашение в пару.',
           showAlert: true,
         });
         return { ok: true, action: 'set:no_pair' };
@@ -313,11 +405,18 @@ async function processClaimedUpdate(
       if (data.startsWith('set:threshold:')) {
         const val = Number(data.split(':')[2]);
         await store.updateSettings({ userId: profile.id, pairId: ctx.pair.id, finishThreshold: val });
-        await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: `Финиш: ${val} шагов` });
+        await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: `Лимит: ${val}` });
       } else if (data.startsWith('set:cooldown:')) {
         const val = Number(data.split(':')[2]);
         await store.updateSettings({ userId: profile.id, pairId: ctx.pair.id, cooldownSeconds: val });
         await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: `Пауза: ${val} сек.` });
+      } else if (data === 'set:anim:toggle') {
+        const nextFast = !Boolean(ctx.pair.fast_animation);
+        await store.updateSettings({ userId: profile.id, pairId: ctx.pair.id, fastAnimation: nextFast });
+        await transport.answerCallbackQuery({
+          callbackQueryId: cb.id,
+          text: nextFast ? 'Быстрая анимация (5 кадров)' : 'Полная анимация (8 кадров)',
+        });
       } else if (data === 'set:notif:toggle') {
         const conn = ctx.botConnections.find((b) => b.user_id === profile.id);
         const nextVal = !(conn?.notification_enabled ?? true);
@@ -334,7 +433,7 @@ async function processClaimedUpdate(
         await store.bindGroupChat(ctx.pair.id, null);
         await transport.answerCallbackQuery({
           callbackQueryId: cb.id,
-          text: 'Общий чат отвязан — анимации пойдут в личку обоим друзьям.',
+          text: 'Общий чат отвязан',
         });
       } else if (data === 'set:reset') {
         await store.updateSettings({
@@ -344,10 +443,10 @@ async function processClaimedUpdate(
         });
         await transport.answerCallbackQuery({
           callbackQueryId: cb.id,
-          text: '🔄 Начат новый раунд! Счётчики сброшены на 0.',
+          text: 'Новый раунд начат',
         });
         const freshCtx = await store.getPairContextForUser(profile.id);
-        await sendMainMenu(transport, chatId, profile.id, freshCtx);
+        await sendMainMenu(transport, chatId, profile.id, freshCtx, cb.message?.message_id);
         return { ok: true, action: 'set:reset' };
       }
 
@@ -357,6 +456,7 @@ async function processClaimedUpdate(
         await transport.editMessageText({
           chatId,
           messageId: cb.message.message_id,
+          parseMode: 'HTML',
           text: formatSettingsMessage({
             pair: freshCtx.pair,
             notificationsEnabled: conn?.notification_enabled ?? true,
@@ -375,7 +475,7 @@ async function processClaimedUpdate(
   }
 
   // -------------------------------------------------------------------------
-  // 2. Handle Text Commands & Messages
+  // 2. Text Commands & Messages
   // -------------------------------------------------------------------------
   const msg = update.message;
   if (!msg?.from || !msg.text) {
@@ -397,12 +497,16 @@ async function processClaimedUpdate(
 
   let ctx = await store.getPairContextForUser(profile.id);
 
-  if (inGroup && ctx.pair && ctx.pair.group_chat_id !== chatId && (commandToken === '/start' || commandToken === '/bind')) {
+  if (
+    inGroup &&
+    ctx.pair &&
+    ctx.pair.group_chat_id !== chatId &&
+    (commandToken === '/start' || commandToken === '/bind')
+  ) {
     await store.bindGroupChat(ctx.pair.id, chatId);
     ctx = await store.getPairContextForUser(profile.id);
   }
 
-  // /start [CODE]
   if (commandToken === '/start') {
     if (arg && !arg.startsWith('link_')) {
       return await handleJoinFlow(store, transport, profile.id, arg, chatId, inGroup ? chatId : null);
@@ -410,13 +514,15 @@ async function processClaimedUpdate(
     if (!ctx.pair) {
       await transport.sendMessage({
         chatId,
+        parseMode: 'HTML',
         text: [
-          `👋 Привет, ${profile.display_name}! Добро пожаловать в «АЛЛО, РОУД!» — ASCII CHAOS.`,
+          `<b>АЛЛО, РОУД</b>`,
+          `<i>Привет, ${escapeHtml(profile.display_name)}.</i>`,
           '',
-          'Правила простые:',
-          '1️⃣ Ты и твой друг связываете пару (только 2 игрока).',
-          '2️⃣ Кто-то не поднял телефон — жмёшь «🥊 ОН НЕ ПОДНЯЛ ТЕЛЕФОН».',
-          '3️⃣ В чат прилетает случайная текстовая ASCII-сцена хаоса и +1 шаг к титулу «ПРИДУРОК, КОТОРЫЙ НЕ ПОДНЯЛ ТЕЛЕФОН»!',
+          'Минималистичная игра для двух друзей:',
+          '1. Свяжите пару по коду приглашения',
+          '2. Если друг не берёт трубку — фиксируйте пропуск',
+          '3. Смотрите короткую ASCII-сцену и следите за счётом',
         ].join('\n'),
         replyMarkup: buildUnpairedKeyboard(),
       });
@@ -430,13 +536,16 @@ async function processClaimedUpdate(
     return { ok: true, action: '/start:active' };
   }
 
-  // /join <CODE> or bare invite code message (e.g. ALLO-7F3A)
-  if (commandToken === '/join' || ((!ctx.pair || ctx.pair.status === 'waiting') && looksLikeInviteCode(rawText))) {
+  if (
+    commandToken === '/join' ||
+    ((!ctx.pair || ctx.pair.status === 'waiting') && looksLikeInviteCode(rawText))
+  ) {
     const code = commandToken === '/join' ? arg : rawText;
     if (!code) {
       await transport.sendMessage({
         chatId,
-        text: 'Укажи код приглашения после команды, например:\n/join ALLO-7F3A',
+        parseMode: 'HTML',
+        text: 'Укажите код после команды: <code>/join ALLO-7F3A</code>',
       });
       return { ok: true, action: '/join:missing_code' };
     }
@@ -451,14 +560,16 @@ async function processClaimedUpdate(
     if (!inGroup) {
       await transport.sendMessage({
         chatId,
-        text: 'Добавь бота в ваш общий групповой чат с другом и отправь там /bind — тогда все ASCII-сцены будут выходить прямо в общую группу!',
+        parseMode: 'HTML',
+        text: 'Добавьте бота в общий чат с другом и отправьте там <code>/bind</code> — сцены начнут выходить в группу.',
       });
       return { ok: true, action: '/bind:not_group' };
     }
     await store.bindGroupChat(ctx.pair.id, chatId);
     await transport.sendMessage({
       chatId,
-      text: '✅ Этот общий чат привязан к паре! Теперь ASCII-анимации и итоговые счета будут появляться здесь для обоих друзей.',
+      parseMode: 'HTML',
+      text: '<b>Общий чат привязан.</b>\nТеперь ASCII-сцены и счёт раунда будут появляться здесь.',
       replyMarkup: buildMainMenuKeyboard(),
     });
     return { ok: true, action: '/bind:ok' };
@@ -469,7 +580,8 @@ async function processClaimedUpdate(
       await store.bindGroupChat(ctx.pair.id, null);
       await transport.sendMessage({
         chatId,
-        text: '💬 Общий чат отвязан. Теперь анимации будут отправляться в личку обоим участникам.',
+        parseMode: 'HTML',
+        text: 'Общий чат отвязан. Уведомления переведены в личные сообщения.',
       });
     }
     return { ok: true, action: '/unbindgroup' };
@@ -501,9 +613,37 @@ async function processClaimedUpdate(
     });
   }
 
+  if (commandToken === '/callback') {
+    return await handleCallbackLogAction({
+      store,
+      transport,
+      actorId: profile.id,
+      sourceChatId: chatId,
+      idempotencyKey: `tg_upd_${update.update_id}`,
+    });
+  }
+
+  if (commandToken === '/scenes') {
+    return await handleScenePreviewAction({
+      store,
+      transport,
+      actorId: profile.id,
+      sourceChatId: chatId,
+      frameDelayMs: deps.frameDelayMs,
+      finalFrameHoldMs: deps.finalFrameHoldMs,
+      sleep,
+      randomFn,
+    });
+  }
+
   if (commandToken === '/score') {
     await sendScoreView(transport, chatId, profile.id, ctx);
     return { ok: true, action: '/score' };
+  }
+
+  if (commandToken === '/stats') {
+    await sendStatsView(transport, chatId, ctx);
+    return { ok: true, action: '/stats' };
   }
 
   if (commandToken === '/history') {
@@ -548,7 +688,6 @@ async function playAsciiAnimationSequence(params: {
 
   const activeMessages: Array<{ chatId: string; messageId: number }> = [];
 
-  // Frame 0: initial sendMessage with HTML <pre>
   for (const targetChatId of targetChatIds) {
     const sent = await transport.sendMessage({
       chatId: targetChatId,
@@ -568,7 +707,6 @@ async function playAsciiAnimationSequence(params: {
     await onPrimaryMessageSent(activeMessages[0].chatId, activeMessages[0].messageId);
   }
 
-  // Subsequent frames: sequential editMessageText on the exact same message_id
   let editable = activeMessages.slice();
   for (let i = 1; i < frames.length; i++) {
     if (frameDelayMs > 0) {
@@ -586,7 +724,6 @@ async function playAsciiAnimationSequence(params: {
         parseMode: 'HTML',
       });
 
-      // Handle Telegram rate limit (429 retry_after) cleanly if transport returned one
       if (!res.ok && res.errorCode === 429 && res.retryAfter) {
         const waitMs = Math.min(5000, Math.max(500, res.retryAfter * 1000));
         await sleep(waitMs);
@@ -602,13 +739,11 @@ async function playAsciiAnimationSequence(params: {
         stillEditable.push(target);
       } else {
         const desc = (res.description || '').toLowerCase();
-        // Ignore "message is not modified" — keep editing subsequent frames
         if (desc.includes('message is not modified')) {
           stillEditable.push(target);
         } else if (desc.includes('message to edit not found') || desc.includes('message was deleted')) {
-          // Stop editing this missing message
+          // Stop editing missing message
         } else {
-          // Keep trying remaining frames on transient errors
           stillEditable.push(target);
         }
       }
@@ -618,17 +753,15 @@ async function playAsciiAnimationSequence(params: {
     if (editable.length === 0) break;
   }
 
-  // Hold briefly on final F A T A L I T Y ! splash so both players read it
   if (finalFrameHoldMs > 0) {
     await sleep(finalFrameHoldMs);
   }
 
-  // Cleanly delete temporary animation messages (swallow errors if Telegram forbids deletion)
   for (const temp of activeMessages) {
     try {
       await transport.deleteMessage(temp.chatId, temp.messageId);
     } catch {
-      // Telegram may reject deleteMessage in some chat configurations; continue to show permanent result
+      // ignore if Telegram denies deleteMessage
     }
   }
 
@@ -652,7 +785,8 @@ async function handleJoinFlow(
   } catch (err) {
     await transport.sendMessage({
       chatId,
-      text: `⚠️ ${err instanceof Error ? err.message : 'Не удалось присоединиться к паре.'}`,
+      parseMode: 'HTML',
+      text: escapeHtml(err instanceof Error ? err.message : 'Не удалось присоединиться к паре.'),
     });
     return { ok: true, action: 'join:failed' };
   }
@@ -671,7 +805,8 @@ async function handleJoinFlow(
     });
     await transport.sendMessage({
       chatId,
-      text: `✅ Пара собрана! Вы оба на арене.\n\n${welcomeText}`,
+      parseMode: 'HTML',
+      text: `<b>Пара собрана.</b>\n\n${welcomeText}`,
       replyMarkup: buildMainMenuKeyboard(),
     });
 
@@ -680,7 +815,8 @@ async function handleJoinFlow(
       if (creatorConn && creatorConn.telegram_chat_id !== chatId) {
         await transport.sendMessage({
           chatId: creatorConn.telegram_chat_id,
-          text: `🎉 ${joiner?.display_name || 'Твой друг'} присоединился к паре! Арена готова к бою.`,
+          parseMode: 'HTML',
+          text: `<b>${escapeHtml(joiner?.display_name || 'Друг')}</b> в игре. Можно начинать.`,
           replyMarkup: buildMainMenuKeyboard(),
         });
       }
@@ -733,7 +869,7 @@ async function handleMissAction(params: {
         showAlert: true,
       });
     } else {
-      await transport.sendMessage({ chatId: sourceChatId, text: `⏳ ${check.error}` });
+      await transport.sendMessage({ chatId: sourceChatId, text: check.error });
     }
     return { ok: true, action: `miss:rejected:${check.code}` };
   }
@@ -742,7 +878,7 @@ async function handleMissAction(params: {
     if (callbackQueryId) {
       await transport.answerCallbackQuery({
         callbackQueryId,
-        text: 'Событие уже обрабатывается!',
+        text: 'Событие уже обрабатывается.',
       });
     }
     return { ok: true, action: 'miss:deduplicated' };
@@ -765,7 +901,7 @@ async function handleMissAction(params: {
   if (callbackQueryId) {
     await transport.answerCallbackQuery({
       callbackQueryId,
-      text: `🎬 Запускаю сцену: ${scene.title}`,
+      text: `Сцена: ${scene.title}`,
     });
   }
 
@@ -795,12 +931,12 @@ async function handleMissAction(params: {
   const actorConn = refreshedCtx.botConnections.find((b) => b.user_id === actor.id);
   const recipientConn = refreshedCtx.botConnections.find((b) => b.user_id === recipient.id);
 
-  // Winner is ALWAYS the actor who pressed the button; direction matches lane_index
   const winnerSide: 'left' | 'right' = actorMember?.lane_index === 1 ? 'right' : 'left';
   const frames = renderAsciiSceneFrames(scene, {
     winnerSide,
     winnerName: actor.display_name,
     loserName: recipient.display_name,
+    fastMode: Boolean(pair.fast_animation),
   });
 
   const stepDelayMs = frameDelayMs ?? scene.frameDelayMs;
@@ -813,17 +949,15 @@ async function handleMissAction(params: {
     if (sourceChatId !== groupChatId) {
       await transport.sendMessage({
         chatId: sourceChatId,
-        text: `🎬 Запускаю сцену «${scene.title}» против ${recipient.display_name} в вашем общем чате!`,
+        parseMode: 'HTML',
+        text: `Сцена «${escapeHtml(scene.title)}» отправлена в общий чат.`,
       });
     }
     animationTargets.push(groupChatId);
   } else {
-    const dmTargets = new Set<string>();
-    dmTargets.add(actorConn?.telegram_chat_id || sourceChatId);
-    if (recipientConn && recipientConn.notification_enabled) {
-      dmTargets.add(recipientConn.telegram_chat_id);
-    }
-    animationTargets.push(...dmTargets);
+    // In DM mode, play immediately only for the caller (who is watching right now).
+    // The friend receives a play-on-demand envelope ("Открыть сцену") so they don't miss the animation.
+    animationTargets.push(actorConn?.telegram_chat_id || sourceChatId);
   }
 
   const totalAnimMs = stepDelayMs * Math.max(0, frames.length - 1) + holdMs;
@@ -849,7 +983,6 @@ async function handleMissAction(params: {
     });
   }
 
-  // Stage 4: Permanent Shame Card + Reaction Buttons
   const permanentText = formatPermanentShameMessage({
     actorName: actor.display_name,
     recipientName: recipient.display_name,
@@ -864,6 +997,7 @@ async function handleMissAction(params: {
   if (groupChatId) {
     const res = await transport.sendMessage({
       chatId: groupChatId,
+      parseMode: 'HTML',
       text: permanentText,
       replyMarkup: reactionKeyboard,
     });
@@ -873,14 +1007,22 @@ async function handleMissAction(params: {
       });
     }
   } else {
-    const recipientChatId = recipientConn?.telegram_chat_id;
+    const recipientChatId =
+      recipientConn && recipientConn.notification_enabled ? recipientConn.telegram_chat_id : undefined;
     const actorChatId = actorConn?.telegram_chat_id || sourceChatId;
 
     if (recipientChatId) {
+      const envelopeText = formatUnopenedSceneEnvelopeMessage({
+        actorName: actor.display_name,
+        recipientConfirmedSteps: recipientProg?.confirmedSteps ?? 0,
+        finishThreshold: pair.finish_threshold,
+        sceneTitle: scene.title,
+      });
       const res = await transport.sendMessage({
         chatId: recipientChatId,
-        text: permanentText,
-        replyMarkup: reactionKeyboard,
+        parseMode: 'HTML',
+        text: envelopeText,
+        replyMarkup: buildPendingEnvelopeKeyboard(createdEvent.id),
       });
       if (res.ok && res.result?.message_id) {
         await store.updateEventLifecycle(createdEvent.id, {
@@ -892,13 +1034,14 @@ async function handleMissAction(params: {
     if (actorChatId && actorChatId !== recipientChatId) {
       await transport.sendMessage({
         chatId: actorChatId,
+        parseMode: 'HTML',
         text: [
-          `🎬 Сцена «${scene.title}» завершена! ${recipient.display_name} получил(а) карточку позора.`,
+          `<b>Сцена завершена</b> — ${escapeHtml(scene.title)}`,
           '',
-          `📊 Счёт: ${formatScoreboardLine(players, actor.id, pair.finish_threshold)}`,
+          `Счёт: ${formatScoreboardLine(players, actor.id, pair.finish_threshold)}`,
           recipientChatId
-            ? '⏳ Ждём ответа друга («Признаю» или «Оспорить»).'
-            : '⚠️ Друг ещё не запускал бота в личке — отправь ему ссылку на бота!',
+            ? '<i>Друг получил конверт со сценой — анимация запустится, когда он откроет её.</i>'
+            : '<i>Друг ещё не открыл бота в личных сообщениях или отключил уведомления.</i>',
         ].join('\n'),
         replyMarkup: buildMainMenuKeyboard(),
       });
@@ -906,6 +1049,334 @@ async function handleMissAction(params: {
   }
 
   return { ok: true, action: 'miss:ascii_completed' };
+}
+
+async function handleCallbackLogAction(params: {
+  store: BotStore;
+  transport: TelegramTransport;
+  actorId: string;
+  sourceChatId: string;
+  callbackQueryId?: string;
+  messageId?: number;
+  idempotencyKey: string;
+}): Promise<{ ok: true; action: string }> {
+  const { store, transport, actorId, sourceChatId, callbackQueryId, messageId, idempotencyKey } =
+    params;
+
+  const ctx = await store.getPairContextForUser(actorId);
+  const check = validateEventCreation({
+    actorId,
+    pair: ctx.pair,
+    members: ctx.members,
+    existingEvents: ctx.events,
+    idempotencyKey,
+    eventType: 'callback',
+  });
+
+  if (!check.ok) {
+    if (callbackQueryId) {
+      await transport.answerCallbackQuery({ callbackQueryId, text: check.error, showAlert: true });
+    } else {
+      await transport.sendMessage({ chatId: sourceChatId, text: check.error });
+    }
+    return { ok: true, action: `callback:rejected:${check.code}` };
+  }
+
+  const pair = ctx.pair!;
+  const actor = ctx.profiles.find((p) => p.id === actorId)!;
+  const recipient = ctx.profiles.find((p) => p.id === check.recipientId)!;
+
+  if (!check.deduplicated) {
+    const nowIso = new Date().toISOString();
+    await store.createMissedCallEvent({
+      pair_id: pair.id,
+      actor_id: actor.id,
+      recipient_id: recipient.id,
+      event_type: 'callback',
+      status: 'confirmed',
+      steps_awarded: 0,
+      note: null,
+      target_chat_id: pair.group_chat_id || sourceChatId,
+      created_at: nowIso,
+      resolved_at: nowIso,
+      idempotency_key: idempotencyKey,
+    });
+  }
+
+  if (callbackQueryId) {
+    await transport.answerCallbackQuery({ callbackQueryId, text: 'Перезвон учтён' });
+  }
+
+  const freshCtx = await store.getPairContextForUser(actorId);
+  const players = buildPlayersProgress(freshCtx);
+  const actorProg = players.find((p) => p.userId === actor.id);
+
+  await editOrSendPanel({
+    transport,
+    chatId: sourceChatId,
+    messageId,
+    text: [
+      '<b>ПЕРЕЗВОН ЗАФИКСИРОВАН</b>',
+      `<i>${escapeHtml(actor.display_name)} перезвонил(а) ${escapeHtml(recipient.display_name)}</i>`,
+      '',
+      `Всего перезвонов за раунд: <b>${actorProg?.callbacksCount ?? 1}</b>`,
+      `Счёт: ${formatScoreboardLine(players, actor.id, pair.finish_threshold)}`,
+    ].join('\n'),
+    replyMarkup: buildMainMenuKeyboard(),
+  });
+
+  return { ok: true, action: 'callback:logged' };
+}
+
+async function handleScenePreviewAction(params: {
+  store: BotStore;
+  transport: TelegramTransport;
+  actorId: string;
+  sourceChatId: string;
+  callbackQueryId?: string;
+  frameDelayMs?: number;
+  finalFrameHoldMs?: number;
+  sleep: (ms: number) => Promise<void>;
+  randomFn: () => number;
+}): Promise<{ ok: true; action: string }> {
+  const {
+    store,
+    transport,
+    actorId,
+    sourceChatId,
+    callbackQueryId,
+    frameDelayMs,
+    finalFrameHoldMs,
+    sleep,
+    randomFn,
+  } = params;
+
+  const ctx = await store.getPairContextForUser(actorId);
+  if (!ctx.pair || ctx.pair.status !== 'active') {
+    if (callbackQueryId) {
+      await transport.answerCallbackQuery({
+        callbackQueryId,
+        text: 'Сначала свяжите пару.',
+        showAlert: true,
+      });
+    } else {
+      await sendNeedsPairMessage(transport, sourceChatId, ctx.pair?.invitation_code);
+    }
+    return { ok: true, action: 'preview:needs_pair' };
+  }
+
+  const actor = ctx.profiles.find((p) => p.id === actorId)!;
+  const partner = ctx.profiles.find((p) => p.id !== actorId) || actor;
+  const scene = pickRandomAsciiScene(ctx.pair.recent_scenes || [], randomFn);
+
+  if (callbackQueryId) {
+    await transport.answerCallbackQuery({
+      callbackQueryId,
+      text: `Превью: ${scene.title}`,
+    });
+  }
+
+  const frames = renderAsciiSceneFrames(scene, {
+    winnerSide: 'left',
+    winnerName: actor.display_name,
+    loserName: partner.display_name,
+    fastMode: Boolean(ctx.pair.fast_animation),
+  });
+
+  await playAsciiAnimationSequence({
+    transport,
+    targetChatIds: [sourceChatId],
+    frames,
+    frameDelayMs: frameDelayMs ?? scene.frameDelayMs,
+    finalFrameHoldMs: finalFrameHoldMs ?? 900,
+    sleep,
+  });
+
+  await transport.sendMessage({
+    chatId: sourceChatId,
+    parseMode: 'HTML',
+    text: [
+      `<b>Превью сцены</b> — ${escapeHtml(scene.title)}`,
+      `<i>Категория: ${SCENE_TYPE_LABELS[scene.type]} · счёт раунда не изменён</i>`,
+    ].join('\n'),
+    replyMarkup: buildBackToMenuKeyboard(),
+  });
+
+  return { ok: true, action: 'preview:completed' };
+}
+
+async function handleReplaySceneAction(params: {
+  store: BotStore;
+  transport: TelegramTransport;
+  cb: TelegramCallbackQuery;
+  userId: string;
+  eventId: string;
+  fallbackChatId: string;
+  frameDelayMs?: number;
+  finalFrameHoldMs?: number;
+  sleep: (ms: number) => Promise<void>;
+  randomFn: () => number;
+}): Promise<{ ok: true; action: string }> {
+  const {
+    store,
+    transport,
+    cb,
+    userId,
+    eventId,
+    fallbackChatId,
+    frameDelayMs,
+    finalFrameHoldMs,
+    sleep,
+    randomFn,
+  } = params;
+
+  const event = await store.getEventById(eventId);
+  if (!event) {
+    await transport.answerCallbackQuery({
+      callbackQueryId: cb.id,
+      text: 'Сцена больше недоступна.',
+      showAlert: true,
+    });
+    return { ok: true, action: 'replay:not_found' };
+  }
+
+  const ctx = await store.getPairContextForUser(userId);
+  const inPair = ctx.members.some((m) => m.pair_id === event.pair_id && m.user_id === userId);
+  if (!ctx.pair || !inPair) {
+    await transport.answerCallbackQuery({
+      callbackQueryId: cb.id,
+      text: 'Вы не можете просматривать сцены чужой пары.',
+      showAlert: true,
+    });
+    return { ok: true, action: 'replay:forbidden' };
+  }
+
+  const scene =
+    (event.scene_id ? getAsciiSceneById(event.scene_id) : null) ||
+    pickRandomAsciiScene([], randomFn);
+
+  await transport.answerCallbackQuery({
+    callbackQueryId: cb.id,
+    text: `Запуск: ${scene.title}`,
+  });
+
+  const pair = ctx.pair;
+  const actor = ctx.profiles.find((p) => p.id === event.actor_id);
+  const recipient = ctx.profiles.find((p) => p.id === event.recipient_id);
+  const actorMember = ctx.members.find((m) => m.user_id === event.actor_id);
+  const winnerSide: 'left' | 'right' = actorMember?.lane_index === 1 ? 'right' : 'left';
+
+  const frames = renderAsciiSceneFrames(scene, {
+    winnerSide,
+    winnerName: actor?.display_name || 'Друг',
+    loserName: recipient?.display_name || 'Вы',
+    fastMode: Boolean(pair.fast_animation),
+  });
+
+  const stepDelayMs = frameDelayMs ?? scene.frameDelayMs;
+  const holdMs = finalFrameHoldMs ?? 1200;
+  const chatId = cb.message ? String(cb.message.chat.id) : fallbackChatId;
+  const msgId = cb.message?.message_id;
+
+  if (msgId && frames.length > 0) {
+    for (let i = 0; i < frames.length; i++) {
+      if (i > 0 && stepDelayMs > 0) {
+        await sleep(stepDelayMs);
+      }
+      const res = await transport.editMessageText({
+        chatId,
+        messageId: msgId,
+        text: wrapPreHtml(frames[i]),
+        parseMode: 'HTML',
+      });
+      if (!res.ok && res.errorCode === 429 && res.retryAfter) {
+        await sleep(Math.min(5000, Math.max(500, res.retryAfter * 1000)));
+        await transport.editMessageText({
+          chatId,
+          messageId: msgId,
+          text: wrapPreHtml(frames[i]),
+          parseMode: 'HTML',
+        });
+      }
+    }
+    if (holdMs > 0) {
+      await sleep(holdMs);
+    }
+  } else {
+    await playAsciiAnimationSequence({
+      transport,
+      targetChatIds: [chatId],
+      frames,
+      frameDelayMs: stepDelayMs,
+      finalFrameHoldMs: holdMs,
+      sleep,
+    });
+  }
+
+  // Re-fetch event & pair state in case status changed during playback
+  const latestEvent = (await store.getEventById(event.id)) || event;
+  const latestCtx = await store.getPairContextForUser(userId);
+  const players = buildPlayersProgress(latestCtx);
+  const recipientProg = players.find((p) => p.userId === latestEvent.recipient_id);
+  const scoreLines = players
+    .map(
+      (p) =>
+        `${escapeHtml(p.profile.display_name)} — <b>${p.confirmedSteps}/${pair.finish_threshold}</b>`
+    )
+    .join('\n');
+
+  let finalText: string;
+  let finalMarkup: InlineKeyboardMarkup;
+
+  if (latestEvent.status === 'pending') {
+    finalText = formatPermanentShameMessage({
+      actorName: actor?.display_name || 'Друг',
+      recipientName: recipient?.display_name || 'Вы',
+      recipientConfirmedSteps: recipientProg?.confirmedSteps ?? 0,
+      recipientPendingSteps: recipientProg?.pendingSteps ?? 1,
+      finishThreshold: pair.finish_threshold,
+      players,
+      sceneTitle: scene.title,
+    });
+    finalMarkup = buildEventReactionKeyboard(latestEvent.id);
+  } else if (latestEvent.status === 'disputed') {
+    finalText = [
+      `<b>СПОРНОЕ СОБЫТИЕ</b>`,
+      `<i>${escapeHtml(recipient?.display_name || 'Игрок')} оспаривает пропуск · шаг заморожен</i>`,
+      '',
+      '<b>Счёт раунда</b>',
+      scoreLines,
+    ].join('\n');
+    finalMarkup = buildDisputedEventKeyboard(latestEvent.id);
+  } else if (latestEvent.status === 'confirmed') {
+    finalText = [
+      `<b>ПРОПУСК ПРИЗНАН</b>`,
+      `<i>${escapeHtml(recipient?.display_name || 'Игрок')} · +1 шаг · «${escapeHtml(recipientProg?.currentRank.title || '')}»</i>`,
+      '',
+      '<b>Счёт раунда</b>',
+      scoreLines,
+    ].join('\n');
+    finalMarkup = buildMainMenuKeyboard();
+  } else {
+    finalText = [
+      `<b>СОБЫТИЕ ОТМЕНЕНО</b>`,
+      `<i>${escapeHtml(actor?.display_name || 'Игрок')} снял(а) отметку</i>`,
+      '',
+      '<b>Счёт раунда</b>',
+      scoreLines,
+    ].join('\n');
+    finalMarkup = buildMainMenuKeyboard();
+  }
+
+  await editOrSendPanel({
+    transport,
+    chatId,
+    messageId: msgId,
+    text: finalText,
+    replyMarkup: finalMarkup,
+  });
+
+  return { ok: true, action: 'replay:completed' };
 }
 
 async function handleEventCallbackAction(params: {
@@ -975,10 +1446,10 @@ async function handleEventCallbackAction(params: {
 
   const toastText =
     action === 'confirm'
-      ? `😂 Пропуск признан! Счёт: ${recipientProg.confirmedSteps}/${pair.finish_threshold}`
+      ? `Признано: ${recipientProg.confirmedSteps}/${pair.finish_threshold}`
       : action === 'dispute'
-        ? '🤨 Событие отправлено в споры!'
-        : '🕊️ Обвинение снято.';
+        ? 'Отмечено как спорное'
+        : 'Обвинение снято';
 
   await transport.answerCallbackQuery({ callbackQueryId: cb.id, text: toastText });
 
@@ -986,7 +1457,10 @@ async function handleEventCallbackAction(params: {
   const msgId = cb.message?.message_id;
 
   const scoreLines = players
-    .map((p) => `• ${p.profile.display_name} — ${p.confirmedSteps}/${pair.finish_threshold}`)
+    .map(
+      (p) =>
+        `${escapeHtml(p.profile.display_name)} — <b>${p.confirmedSteps}/${pair.finish_threshold}</b>`
+    )
     .join('\n');
 
   if (msgId) {
@@ -994,11 +1468,12 @@ async function handleEventCallbackAction(params: {
       await transport.editMessageText({
         chatId,
         messageId: msgId,
+        parseMode: 'HTML',
         text: [
-          `✅ ПРОПУСК ПРИЗНАН — ${recipient.display_name} (+1 шаг)`,
-          `🏅 Звание: «${recipientProg.currentRank.title}»`,
+          `<b>ПРОПУСК ПРИЗНАН</b>`,
+          `<i>${escapeHtml(recipient.display_name)} · +1 шаг · «${escapeHtml(recipientProg.currentRank.title)}»</i>`,
           '',
-          '📊 Актуальный счёт:',
+          '<b>Счёт раунда</b>',
           scoreLines,
         ].join('\n'),
         replyMarkup: buildMainMenuKeyboard(),
@@ -1007,11 +1482,12 @@ async function handleEventCallbackAction(params: {
       await transport.editMessageText({
         chatId,
         messageId: msgId,
+        parseMode: 'HTML',
         text: [
-          `🤨 СПОРНОЕ СОБЫТИЕ — ${recipient.display_name} не согласен(на)!`,
-          'Счёт не увеличен, пока спор не будет решён.',
+          `<b>СПОРНОЕ СОБЫТИЕ</b>`,
+          `<i>${escapeHtml(recipient.display_name)} оспаривает пропуск · шаг заморожен</i>`,
           '',
-          '📊 Текущий счёт:',
+          '<b>Счёт раунда</b>',
           scoreLines,
         ].join('\n'),
         replyMarkup: buildDisputedEventKeyboard(event.id),
@@ -1020,10 +1496,12 @@ async function handleEventCallbackAction(params: {
       await transport.editMessageText({
         chatId,
         messageId: msgId,
+        parseMode: 'HTML',
         text: [
-          `🕊️ СОБЫТИЕ ОТМЕНЕНО — ${actor.display_name} снял(а) обвинение.`,
+          `<b>СОБЫТИЕ ОТМЕНЕНО</b>`,
+          `<i>${escapeHtml(actor.display_name)} снял(а) отметку</i>`,
           '',
-          '📊 Текущий счёт:',
+          '<b>Счёт раунда</b>',
           scoreLines,
         ].join('\n'),
         replyMarkup: buildMainMenuKeyboard(),
@@ -1039,19 +1517,19 @@ async function handleEventCallbackAction(params: {
     if (partnerConn && partnerConn.telegram_chat_id !== chatId) {
       const dmStatus =
         action === 'confirm'
-          ? `✅ ${recipient.display_name} признал(а) пропуск! Счёт: ${recipientProg.confirmedSteps}/${pair.finish_threshold}`
+          ? `<b>${escapeHtml(recipient.display_name)}</b> признал(а) пропуск: ${recipientProg.confirmedSteps}/${pair.finish_threshold}`
           : action === 'dispute'
-            ? `🤨 ${recipient.display_name} оспаривает пропуск! Шаг заморожен.`
-            : `🕊️ ${actor.display_name} отменил(а) отметку о пропуске.`;
+            ? `<b>${escapeHtml(recipient.display_name)}</b> оспаривает пропуск. Шаг заморожен.`
+            : `<b>${escapeHtml(actor.display_name)}</b> отменил(а) отметку о пропуске.`;
       await transport.sendMessage({
         chatId: partnerConn.telegram_chat_id,
+        parseMode: 'HTML',
         text: `${dmStatus}\n\n${scoreLines}`,
         replyMarkup: action === 'dispute' ? buildDisputedEventKeyboard(event.id) : buildMainMenuKeyboard(),
       });
     }
   }
 
-  // Check GAME OVER (10/10 or custom finish_threshold)
   if (action === 'confirm' && recipientProg.hasReachedFinish) {
     const targetChats = new Set<string>();
     if (pair.group_chat_id) {
@@ -1068,6 +1546,7 @@ async function handleEventCallbackAction(params: {
       winnerName: actor.display_name,
       loserName: recipient.display_name,
       finishThreshold: pair.finish_threshold,
+      fastMode: Boolean(pair.fast_animation),
     });
 
     await playAsciiAnimationSequence({
@@ -1087,6 +1566,7 @@ async function handleEventCallbackAction(params: {
     for (const tc of targetChats) {
       await transport.sendMessage({
         chatId: tc,
+        parseMode: 'HTML',
         text: gameOverText,
         replyMarkup: buildGameOverKeyboard(),
       });
@@ -1110,7 +1590,7 @@ export async function cleanupExpiredAnimations(
         await transport.deleteMessage(ev.target_chat_id, ev.animation_message_id);
         deleted++;
       } catch {
-        // mark processed anyway so cron does not retry forever
+        // mark processed anyway
       }
       await store.updateEventLifecycle(ev.id, {
         animation_deleted_at: new Date().toISOString(),
@@ -1129,11 +1609,12 @@ async function sendNeedsPairMessage(
   if (waitingCode) {
     await transport.sendMessage({
       chatId,
+      parseMode: 'HTML',
       text: [
-        '⏳ Твоя пара ещё ждёт второго участника!',
+        '<b>ОЖИДАНИЕ ВТОРОГО ИГРОКА</b>',
         '',
-        `🔑 Код приглашения: ${waitingCode}`,
-        `Отправь другу этот код — он должен написать боту: /join ${waitingCode}`,
+        `Код пары: <code>${escapeHtml(waitingCode)}</code>`,
+        `Друг должен отправить боту: <code>/join ${escapeHtml(waitingCode)}</code>`,
       ].join('\n'),
     });
     return;
@@ -1141,7 +1622,8 @@ async function sendNeedsPairMessage(
 
   await transport.sendMessage({
     chatId,
-    text: '🎮 Сначала создай пару или присоединись по коду приглашения от друга:',
+    parseMode: 'HTML',
+    text: '<b>АЛЛО, РОУД</b>\n\nСоздайте игровую пару или введите код от друга:',
     replyMarkup: buildUnpairedKeyboard(),
   });
 }
@@ -1150,16 +1632,19 @@ async function sendMainMenu(
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
-  ctx: PairContext
+  ctx: PairContext,
+  messageId?: number
 ): Promise<void> {
   const me = ctx.profiles.find((p) => p.id === viewerId);
   const partner = ctx.profiles.find((p) => p.id !== viewerId);
   const players = buildPlayersProgress(ctx);
 
-  await transport.sendMessage({
+  await editOrSendPanel({
+    transport,
     chatId,
+    messageId,
     text: formatWelcomeActiveMessage({
-      viewerName: me?.display_name || 'Ты',
+      viewerName: me?.display_name || 'Вы',
       partnerName: partner?.display_name || 'Друг',
       pair: ctx.pair!,
       players,
@@ -1173,10 +1658,13 @@ async function sendScoreView(
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
-  ctx: PairContext
+  ctx: PairContext,
+  messageId?: number
 ): Promise<void> {
-  await transport.sendMessage({
+  await editOrSendPanel({
+    transport,
     chatId,
+    messageId,
     text: formatScoreMessage({
       viewerId,
       pair: ctx.pair!,
@@ -1186,13 +1674,45 @@ async function sendScoreView(
   });
 }
 
+async function sendStatsView(
+  transport: TelegramTransport,
+  chatId: string,
+  ctx: PairContext,
+  messageId?: number
+): Promise<void> {
+  const stats = computeGameStats({
+    pairId: ctx.pair!.id,
+    finishThreshold: ctx.pair!.finish_threshold,
+    events: ctx.events,
+    members: ctx.members,
+    profiles: ctx.profiles,
+    customRanks: ctx.pair!.custom_ranks,
+    roundStartedAt: ctx.pair!.round_started_at ?? null,
+  });
+
+  await editOrSendPanel({
+    transport,
+    chatId,
+    messageId,
+    text: formatStatsMessage({
+      stats,
+      finishThreshold: ctx.pair!.finish_threshold,
+      profiles: ctx.profiles,
+    }),
+    replyMarkup: buildMainMenuKeyboard(),
+  });
+}
+
 async function sendHistoryView(
   transport: TelegramTransport,
   chatId: string,
-  ctx: PairContext
+  ctx: PairContext,
+  messageId?: number
 ): Promise<void> {
-  await transport.sendMessage({
+  await editOrSendPanel({
+    transport,
     chatId,
+    messageId,
     text: formatHistoryMessage({
       events: ctx.events,
       profiles: ctx.profiles,
@@ -1205,12 +1725,15 @@ async function sendSettingsView(
   transport: TelegramTransport,
   chatId: string,
   viewerId: string,
-  ctx: PairContext
+  ctx: PairContext,
+  messageId?: number
 ): Promise<void> {
   const conn = ctx.botConnections.find((b) => b.user_id === viewerId);
   const enabled = conn?.notification_enabled ?? true;
-  await transport.sendMessage({
+  await editOrSendPanel({
+    transport,
     chatId,
+    messageId,
     text: formatSettingsMessage({
       pair: ctx.pair!,
       notificationsEnabled: enabled,
