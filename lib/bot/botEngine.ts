@@ -12,6 +12,7 @@ import {
 } from './asciiScenes.js';
 import { wrapPreHtml } from './asciiUtils.js';
 import { getDefaultBotStore, type BotStore, type PairContext } from './botStore.js';
+import { looksLikeInviteCode } from './inviteCode.js';
 import {
   buildDisputedEventKeyboard,
   buildEventReactionKeyboard,
@@ -430,7 +431,7 @@ async function processClaimedUpdate(
   }
 
   // /join <CODE> or bare invite code message (e.g. ALLO-7F3A)
-  if (commandToken === '/join' || (!ctx.pair && /^ALLO-[A-Z0-9]{4,}$/i.test(rawText))) {
+  if (commandToken === '/join' || ((!ctx.pair || ctx.pair.status === 'waiting') && looksLikeInviteCode(rawText))) {
     const code = commandToken === '/join' ? arg : rawText;
     if (!code) {
       await transport.sendMessage({
