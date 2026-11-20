@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
-    "test": "tsx --test src/game/rules.test.ts lib/bot/botEngine.test.ts lib/bot/fixes.test.ts lib/bot/diagnostics.test.ts"
+    "test": "tsx --test src/game/rules.test.ts lib/bot/botEngine.test.ts lib/bot/fixes.test.ts lib/bot/diagnostics.test.ts lib/bot/invites.test.ts"
   },
   "dependencies": {
     "@upstash/redis": "^1.41.0",
